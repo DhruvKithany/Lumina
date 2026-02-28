@@ -94,6 +94,11 @@ class GazeTracker:
         self._out_of_zone_since: float | None = None
         self._in_zone_since: float | None = None
         self._time_in_zone_seconds: float = 0.0
+        
+        # EMA Smoothing for jittery webcam solvePnP
+        self._smoothed_yaw: float | None = None
+        self._smoothed_pitch: float | None = None
+        self._smoothing_factor: float = 0.15  # lower = smoother (more latency), higher = responsive (more jitter)
 
     def _landmarks_to_image_points(self, landmarks: Sequence[object]) -> np.ndarray | None:
         """Extract 2D image points for MODEL_POINTS_3D order. landmarks are normalized [0,1]."""
@@ -114,6 +119,7 @@ class GazeTracker:
         self,
         landmarks: Sequence[object],
         timestamp: float,
+        presentation_mode: str = "digital",
     ) -> tuple[bool, float, float, float]:
         """
         Update head pose from face mesh landmarks.
@@ -121,7 +127,7 @@ class GazeTracker:
         """
         img_pts = self._landmarks_to_image_points(landmarks)
         if img_pts is None:
-            return True, self._time_in_zone_seconds, 0.0, 0.0
+            return True, self._time_in_zone_seconds, self._smoothed_yaw or 0.0, self._smoothed_pitch or 0.0
         success, rvec, tvec = cv2.solvePnP(
             MODEL_POINTS_3D,
             img_pts,
@@ -130,22 +136,44 @@ class GazeTracker:
             flags=cv2.SOLVEPNP_ITERATIVE,
         )
         if not success:
-            return True, self._time_in_zone_seconds, 0.0, 0.0
-        pitch_deg, yaw_deg, _roll = _rotation_vector_to_euler(rvec)
+            return True, self._time_in_zone_seconds, self._smoothed_yaw or 0.0, self._smoothed_pitch or 0.0
+        
+        raw_pitch_deg, raw_yaw_deg, _roll = _rotation_vector_to_euler(rvec)
+        
+        # Some solvePnP coordinate systems flip the axes compared to our intuitive UI
+        # We invert them to map to standard UI: negative pitch = looking UP, positive yaw = looking RIGHT
+        raw_pitch_deg = -raw_pitch_deg
+        raw_yaw_deg = -raw_yaw_deg
+        
+        # Apply EMA smoothing to reduce crosshair jitter
+        if self._smoothed_yaw is None or self._smoothed_pitch is None:
+            self._smoothed_yaw = raw_yaw_deg
+            self._smoothed_pitch = raw_pitch_deg
+        else:
+            self._smoothed_yaw = self._smoothed_yaw * (1 - self._smoothing_factor) + raw_yaw_deg * self._smoothing_factor
+            self._smoothed_pitch = self._smoothed_pitch * (1 - self._smoothing_factor) + raw_pitch_deg * self._smoothing_factor
+            
+        final_yaw = self._smoothed_yaw
+        final_pitch = self._smoothed_pitch
+
+        # Shift target zone based on presentation mode
+        # "irl" target is looking ABOVE the camera (negative pitch in UI space)
+        pitch_shift = -15.0 if presentation_mode == "irl" else 0.0
+
         in_zone = (
-            self.pitch_min <= pitch_deg <= self.pitch_max
-            and self.yaw_min <= yaw_deg <= self.yaw_max
+            (self.pitch_min + pitch_shift) <= final_pitch <= (self.pitch_max + pitch_shift)
+            and self.yaw_min <= final_yaw <= self.yaw_max
         )
         if in_zone:
             if self._in_zone_since is None:
                 self._in_zone_since = timestamp
             self._out_of_zone_since = None
             self._time_in_zone_seconds = timestamp - (self._in_zone_since or timestamp)
-            return False, self._time_in_zone_seconds, yaw_deg, pitch_deg
+            return False, self._time_in_zone_seconds, final_yaw, final_pitch
         else:
             if self._out_of_zone_since is None:
                 self._out_of_zone_since = timestamp
             self._in_zone_since = None
             out_duration = timestamp - (self._out_of_zone_since or timestamp)
             gaze_lost = out_duration >= self.gaze_lost_seconds
-            return gaze_lost, self._time_in_zone_seconds, yaw_deg, pitch_deg
+            return gaze_lost, self._time_in_zone_seconds, final_yaw, final_pitch

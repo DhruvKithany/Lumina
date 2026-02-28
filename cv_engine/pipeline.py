@@ -218,7 +218,9 @@ class CVPipeline:
             )
         elif results.face_landmarks:
             lms = getattr(results.face_landmarks, "landmark", None) or []
-            gaze_lost, time_in_zone, yaw, pitch = self.gaze_tracker.update(lms, timestamp)
+            gaze_lost, time_in_zone, yaw, pitch = self.gaze_tracker.update(
+                lms, timestamp, self.state.presentation_mode
+            )
             self.state.update(
                 gaze_lost=gaze_lost,
                 time_in_zone_seconds=time_in_zone,
