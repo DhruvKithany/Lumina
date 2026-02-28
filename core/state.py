@@ -41,6 +41,9 @@ class TelemetryState:
     last_frame_ok: bool = False
     fps: float = 0.0
 
+    # Raw (x,y,z) landmark coordinates for irises, shoulders, wrists.
+    raw_landmarks: dict[str, tuple[float, float, float]] = field(default_factory=dict)
+
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def update(self, **kwargs: Any) -> None:
@@ -65,6 +68,7 @@ class TelemetryState:
                 "probe_visible": self.probe_visible,
                 "last_frame_ok": self.last_frame_ok,
                 "fps": self.fps,
+                "raw_landmarks": dict(self.raw_landmarks),
             }
 
 

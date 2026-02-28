@@ -137,7 +137,7 @@ class HUDOverlay(QWidget):
             self._stability_label.setText("Stability")
         self._gaze_label.setText(f"Gaze: {snap['time_in_zone_seconds']:.1f}s")
         if snap["gaze_lost"]:
-            self._gaze_lost_label.setText("⚠ Gaze lost")
+            self._gaze_lost_label.setText("⚠ Gaze Tracking Lost")
         else:
             self._gaze_lost_label.setText("")
         if snap["probe_visible"] and snap["probe_text"]:

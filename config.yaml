@@ -7,6 +7,12 @@ camera:
   height: 480
   fps: 15
 
+# Sensory layer: MediaPipe Holistic (legacy) or Pose+Face (tasks API).
+sensory:
+  model_complexity: 0
+  refine_face_landmarks: true
+  # For MediaPipe 0.10+: pose_model_path, face_model_path (or run scripts/download_models.py)
+
 # Kinesic entropy ("fidget") detection
 kinesic:
   calibration_seconds: 5
@@ -39,3 +45,8 @@ hud:
   # Position: "top_right" | "top_left" | "bottom_right" | "bottom_left"
   position: "top_right"
   margin: 16
+
+# Biometric heatmap (OpenCV window via --show-heatmap).
+heatmap:
+  enabled: false
+  window_title: "Lumina Biometric Heatmap"
