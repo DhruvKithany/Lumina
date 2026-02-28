@@ -1,0 +1,41 @@
+# Lumina-Presenter runtime configuration.
+# Override via environment or CLI where supported.
+
+camera:
+  index: 0
+  width: 640
+  height: 480
+  fps: 15
+
+# Kinesic entropy ("fidget") detection
+kinesic:
+  calibration_seconds: 5
+  # Entropy flag when velocity exceeds baseline + (threshold_sigma * std)
+  threshold_sigma: 2.0
+  window_seconds: 1.5
+  # MediaPipe Pose landmark indices: wrists 15,16; elbows 13,14; shoulders 11,12
+  landmark_indices: [11, 12, 13, 14, 15, 16]
+
+# Gaze / head pose and "golden zone"
+gaze:
+  # Allowed head pose (degrees): pitch and yaw relative to camera
+  golden_zone_pitch_min: -15
+  golden_zone_pitch_max: 15
+  golden_zone_yaw_min: -20
+  golden_zone_yaw_max: 20
+  gaze_lost_seconds: 1.5
+
+# Cognitive stall -> knowledge probe injection
+probes:
+  enabled: true
+  silence_seconds: 4.0
+  file: "assets/probes.json"
+
+# HUD overlay
+hud:
+  width: 280
+  height: 200
+  update_interval_ms: 100
+  # Position: "top_right" | "top_left" | "bottom_right" | "bottom_left"
+  position: "top_right"
+  margin: 16
