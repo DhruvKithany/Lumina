@@ -34,6 +34,12 @@ class TelemetryState:
     pitch_degrees: float = 0.0
     presentation_mode: str = "digital"  # "digital" (camera) or "irl" (audience above)
 
+    # Backend signal-processing unit (BSP) outputs
+    bsp_gaze_status: str = "LOCKED"  # "LOCKED", "WARNING", or "GAZE LOST"
+    bsp_gaze_distance: float = 0.0  # iris deviation from center
+    bsp_fidgeting: bool = False  # variance-based fidget flag
+    bsp_fidget_variance: float = 0.0  # raw wrist-position variance
+
     # Knowledge probe
     probe_text: str = ""
     probe_visible: bool = False
@@ -66,6 +72,10 @@ class TelemetryState:
                 "yaw_degrees": self.yaw_degrees,
                 "pitch_degrees": self.pitch_degrees,
                 "presentation_mode": self.presentation_mode,
+                "bsp_gaze_status": self.bsp_gaze_status,
+                "bsp_gaze_distance": self.bsp_gaze_distance,
+                "bsp_fidgeting": self.bsp_fidgeting,
+                "bsp_fidget_variance": self.bsp_fidget_variance,
                 "probe_text": self.probe_text,
                 "probe_visible": self.probe_visible,
                 "last_frame_ok": self.last_frame_ok,

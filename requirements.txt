@@ -1,6 +1,7 @@
-# Lumina-Presenter MVP
+# Lumina-Presenter
 # Python 3.10+ recommended
 
+# Core
 opencv-python>=4.8.0
 mediapipe>=0.10.0
 PyQt6>=6.5.0
@@ -9,5 +10,5 @@ PyYAML>=6.0
 
 # Optional: for knowledge-probe injection on silence (VAD)
 # On Windows these may require pre-built wheels or Visual C++ Build Tools
-# webrtcvad>=2.0.10
-# pyaudio>=0.2.14
+webrtcvad>=2.0.10
+pyaudio>=0.2.14

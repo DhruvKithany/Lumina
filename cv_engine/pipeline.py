@@ -28,6 +28,8 @@ from cv_engine.mediapipe_backend import (
     process_frame_tasks,
 )
 from cv_engine.pose_entropy import PoseEntropyTracker
+from backend_signalprocessing_unit.fidget_detector import FidgetDetector as BSPFidgetDetector
+from backend_signalprocessing_unit.gaze_tracker import GazeTracker as BSPGazeTracker
 
 # Landmark indices for raw (x,y,z) mapping
 POSE_LEFT_SHOULDER = 11
@@ -186,6 +188,18 @@ class CVPipeline:
             self._face_landmarker = create_face_landmarker(face_path)
         else:
             raise RuntimeError("No MediaPipe backend available. Install mediapipe with tasks or legacy solutions.")
+        # Backend signal-processing unit (BSP) detectors
+        bsp_cfg = self.config.get("bsp", {})
+        self.bsp_fidget = BSPFidgetDetector(
+            threshold=bsp_cfg.get("fidget_threshold", 0.002),
+            window_size=bsp_cfg.get("fidget_window_size", 30),
+            smoothing_window=bsp_cfg.get("fidget_smoothing_window", 5),
+        )
+        self.bsp_gaze = BSPGazeTracker(
+            deviation_threshold=bsp_cfg.get("gaze_deviation_threshold", 0.05),
+            time_threshold=bsp_cfg.get("gaze_time_threshold", 1.5),
+            smoothing_window=bsp_cfg.get("gaze_smoothing_window", 8),
+        )
         self._stop = threading.Event()
         self._frame_count = 0
         self._last_fps_time = time.perf_counter()
@@ -205,6 +219,12 @@ class CVPipeline:
                 stability_score=stability,
                 high_entropy=high_entropy,
                 calibration_done=self.pose_entropy.calibration_done,
+            )
+            # BSP fidget detector
+            bsp_fidget, bsp_var = self.bsp_fidget.update(pose_list)
+            self.state.update(
+                bsp_fidgeting=bsp_fidget,
+                bsp_fidget_variance=bsp_var,
             )
         else:
             self.state.update(last_frame_ok=True)
@@ -227,6 +247,12 @@ class CVPipeline:
                 yaw_degrees=yaw,
                 pitch_degrees=pitch,
                 last_frame_ok=True,
+            )
+            # BSP iris-based gaze tracker
+            bsp_status, bsp_dist = self.bsp_gaze.update(lms)
+            self.state.update(
+                bsp_gaze_status=bsp_status,
+                bsp_gaze_distance=bsp_dist,
             )
         else:
             self.state.update(gaze_lost=True, last_frame_ok=True)

@@ -37,6 +37,15 @@ probes:
   silence_seconds: 4.0
   file: "assets/probes.json"
 
+# Backend signal-processing unit (variance/iris-based)
+bsp:
+  gaze_deviation_threshold: 0.05
+  gaze_time_threshold: 1.5
+  gaze_smoothing_window: 8
+  fidget_threshold: 0.002
+  fidget_window_size: 30
+  fidget_smoothing_window: 5
+
 # HUD overlay
 hud:
   width: 280

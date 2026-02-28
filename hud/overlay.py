@@ -334,6 +334,24 @@ class HUDOverlay(QWidget):
         controls_layout.addStretch()
         main_layout.addLayout(controls_layout)
         
+        # BSP Signal Processing Row
+        bsp_layout = QHBoxLayout()
+        bsp_layout.setSpacing(6)
+        
+        self._bsp_iris_label = QLabel("IRIS: LOCK")
+        self._bsp_iris_label.setStyleSheet(
+            "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        bsp_layout.addWidget(self._bsp_iris_label)
+        
+        self._bsp_fidget_label = QLabel("● CALM")
+        self._bsp_fidget_label.setStyleSheet(
+            "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        bsp_layout.addWidget(self._bsp_fidget_label)
+        bsp_layout.addStretch()
+        main_layout.addLayout(bsp_layout)
+        
         # Spacer
         main_layout.addStretch()
         
@@ -413,6 +431,35 @@ class HUDOverlay(QWidget):
             snap["time_in_zone_seconds"],
             snap.get("presentation_mode", "digital"),
         )
+
+        # BSP indicators
+        bsp_status = snap.get("bsp_gaze_status", "LOCKED")
+        if bsp_status == "LOCKED":
+            self._bsp_iris_label.setText("IRIS: LOCK")
+            self._bsp_iris_label.setStyleSheet(
+                "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
+            )
+        elif bsp_status == "WARNING":
+            self._bsp_iris_label.setText("IRIS: WARN")
+            self._bsp_iris_label.setStyleSheet(
+                "color: #fbbf24; font-family: Consolas; font-size: 9px; font-weight: bold;"
+            )
+        else:
+            self._bsp_iris_label.setText("IRIS: LOST")
+            self._bsp_iris_label.setStyleSheet(
+                "color: #f87171; font-family: Consolas; font-size: 9px; font-weight: bold;"
+            )
+        
+        if snap.get("bsp_fidgeting", False):
+            self._bsp_fidget_label.setText("● FIDGET")
+            self._bsp_fidget_label.setStyleSheet(
+                "color: #f87171; font-family: Consolas; font-size: 9px; font-weight: bold;"
+            )
+        else:
+            self._bsp_fidget_label.setText("● CALM")
+            self._bsp_fidget_label.setStyleSheet(
+                "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
+            )
 
         # Handle probe visibility with fade-in / fade-out animation
         if snap["probe_visible"] and snap["probe_text"]:
