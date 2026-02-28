@@ -32,6 +32,7 @@ class TelemetryState:
     time_in_zone_seconds: float = 0.0
     yaw_degrees: float = 0.0
     pitch_degrees: float = 0.0
+    presentation_mode: str = "digital"  # "digital" (camera) or "irl" (audience above)
 
     # Knowledge probe
     probe_text: str = ""
@@ -61,6 +62,7 @@ class TelemetryState:
                 "time_in_zone_seconds": self.time_in_zone_seconds,
                 "yaw_degrees": self.yaw_degrees,
                 "pitch_degrees": self.pitch_degrees,
+                "presentation_mode": self.presentation_mode,
                 "probe_text": self.probe_text,
                 "probe_visible": self.probe_visible,
                 "last_frame_ok": self.last_frame_ok,

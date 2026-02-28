@@ -12,6 +12,8 @@ from typing import Any
 
 import cv2
 import mediapipe as mp
+import mediapipe.python.solutions.pose as mp_pose
+import mediapipe.python.solutions.face_mesh as mp_face_mesh
 import numpy as np
 
 from core.state import TelemetryState
@@ -69,13 +71,13 @@ class CVPipeline:
             yaw_max=gaze_cfg.get("golden_zone_yaw_max", 20),
             gaze_lost_seconds=gaze_cfg.get("gaze_lost_seconds", 1.5),
         )
-        self._pose = mp.solutions.pose.Pose(
+        self._pose = mp_pose.Pose(
             static_image_mode=False,
             model_complexity=1,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
-        self._face_mesh = mp.solutions.face_mesh.FaceMesh(
+        self._face_mesh = mp_face_mesh.FaceMesh(
             static_image_mode=False,
             max_num_faces=1,
             refine_landmarks=True,
@@ -109,7 +111,9 @@ class CVPipeline:
         face_result = self._face_mesh.process(rgb)
         if face_result.multi_face_landmarks:
             lms = face_result.multi_face_landmarks[0].landmark
-            gaze_lost, time_in_zone, yaw, pitch = self.gaze_tracker.update(lms, timestamp)
+            gaze_lost, time_in_zone, yaw, pitch = self.gaze_tracker.update(
+                lms, timestamp, self.state.presentation_mode
+            )
             self.state.update(
                 gaze_lost=gaze_lost,
                 time_in_zone_seconds=time_in_zone,
