@@ -51,6 +51,9 @@ class TelemetryState:
     # Raw (x,y,z) landmark coordinates for irises, shoulders, wrists.
     raw_landmarks: dict[str, tuple[float, float, float]] = field(default_factory=dict)
 
+    # Heatmap overlay: when True, face landmarks are drawn on the heatmap window.
+    show_face_heatmap: bool = True
+
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def update(self, **kwargs: Any) -> None:
@@ -81,6 +84,7 @@ class TelemetryState:
                 "last_frame_ok": self.last_frame_ok,
                 "fps": self.fps,
                 "raw_landmarks": dict(self.raw_landmarks),
+                "show_face_heatmap": self.show_face_heatmap,
             }
 
 

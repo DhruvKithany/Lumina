@@ -62,6 +62,7 @@ def draw_heatmap(
     frame_bgr: np.ndarray,
     results: Any,
     window_title: str = "Lumina Biometric Heatmap",
+    draw_face: bool = True,
 ) -> np.ndarray:
     """
     Draw pose and face landmarks on a copy of the frame in HUD style.
@@ -70,6 +71,7 @@ def draw_heatmap(
         frame_bgr: BGR image from camera.
         results: Holistic or tasks result with pose_landmarks and/or face_landmarks (each with .landmark).
         window_title: Unused; kept for API consistency.
+        draw_face: When True, draw face mesh and iris dots; when False, draw only pose.
 
     Returns:
         New BGR image with landmarks drawn (original unchanged).
@@ -89,7 +91,7 @@ def draw_heatmap(
                 landmark_drawing_spec=LANDMARK_SPEC,
                 connection_drawing_spec=CONNECTION_SPEC,
             )
-        if results.face_landmarks:
+        if results.face_landmarks and draw_face:
             mp_drawing.draw_landmarks(
                 annotated,
                 results.face_landmarks,
@@ -118,7 +120,7 @@ def draw_heatmap(
                     landmark_drawing_spec=LANDMARK_SPEC,
                     connection_drawing_spec=CONNECTION_SPEC,
                 )
-        if results.face_landmarks:
+        if results.face_landmarks and draw_face:
             flm = getattr(results.face_landmarks, "landmark", None)
             if flm:
                 du.draw_landmarks(

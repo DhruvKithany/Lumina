@@ -331,6 +331,30 @@ class HUDOverlay(QWidget):
         self._mode_btn.clicked.connect(self._toggle_mode)
         
         controls_layout.addWidget(self._mode_btn)
+        self._face_heatmap_btn = QPushButton("Face: On")
+        self._face_heatmap_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._face_heatmap_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: rgba(40, 45, 55, 180);
+                color: #4ade80;
+                border: 1px solid #4ade80;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-family: Consolas;
+                font-weight: bold;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background-color: rgba(74, 222, 128, 50);
+            }
+            QPushButton:pressed {
+                background-color: rgba(74, 222, 128, 100);
+            }
+            """
+        )
+        self._face_heatmap_btn.clicked.connect(self._toggle_face_heatmap)
+        controls_layout.addWidget(self._face_heatmap_btn)
         controls_layout.addStretch()
         main_layout.addLayout(controls_layout)
         
@@ -461,6 +485,10 @@ class HUDOverlay(QWidget):
                 "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
             )
 
+        self._face_heatmap_btn.setText(
+            "Face: On" if snap.get("show_face_heatmap", True) else "Face: Off"
+        )
+
         # Handle probe visibility with fade-in / fade-out animation
         if snap["probe_visible"] and snap["probe_text"]:
             if self._probe_label.text() != snap["probe_text"] or self._probe_label.isHidden():
@@ -491,6 +519,13 @@ class HUDOverlay(QWidget):
         else:
             self._mode_btn.setText("MODE: DIGITAL")
             self._mode_btn.setStyleSheet(self._mode_btn.styleSheet().replace("#a78bfa", "#38bdf8")) # Blue for Digital
+
+    def _toggle_face_heatmap(self) -> None:
+        """Toggle whether face landmarks are drawn on the heatmap window (when --show-heatmap is used)."""
+        snap = self.state.snapshot()
+        new_value = not snap.get("show_face_heatmap", True)
+        self.state.update(show_face_heatmap=new_value)
+        self._face_heatmap_btn.setText("Face: On" if new_value else "Face: Off")
 
     def _hide_probe_after_fade(self):
         # Only hide if opacity reached 0 (meaning animation didn't get reversed)

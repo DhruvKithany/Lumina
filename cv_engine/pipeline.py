@@ -260,7 +260,12 @@ class CVPipeline:
         self.state.update(raw_landmarks=raw)
         if self._heatmap_enabled and self._heatmap_queue is not None:
             try:
-                annotated = draw_heatmap(frame, results, window_title=self._heatmap_window_title)
+                draw_face = self.state.snapshot().get("show_face_heatmap", True)
+                annotated = draw_heatmap(
+                    frame, results,
+                    window_title=self._heatmap_window_title,
+                    draw_face=draw_face,
+                )
                 if self._heatmap_queue.full():
                     try:
                         self._heatmap_queue.get_nowait()
