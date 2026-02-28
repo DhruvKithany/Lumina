@@ -1,4 +1,4 @@
-# Lumina-Presenter
+# Lumina
 
 An **affective computing layer** that turns a laptop webcam into a real-time presenter coaching HUD. It monitors kinesic stability (fidgeting), gaze engagement (eye contact with camera), and can inject knowledge probes when it detects a cognitive stall (e.g. prolonged silence).
 
@@ -32,7 +32,7 @@ On Windows, `pyaudio` and `webrtcvad` may require [Microsoft C++ Build Tools](ht
 ## Quick start
 
 ```bash
-cd Lumina-Presenter
+cd Lumina
 pip install -r requirements.txt
 python main.py
 ```
@@ -47,7 +47,7 @@ Options:
 ## Project layout
 
 ```
-Lumina-Presenter/
+Lumina/
 ├── main.py              # Entry point: CV thread + HUD
 ├── config.yaml          # Runtime config (camera, thresholds, HUD, probes)
 ├── requirements.txt
