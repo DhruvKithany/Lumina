@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QTimer, Qt, QPropertyAnimation, QRectF, QPointF, QEasingCurve
-from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QBrush
+from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QBrush, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QLabel,
@@ -60,9 +60,23 @@ class StabilityGauge(QWidget):
         super().__init__(parent)
         self.setFixedSize(120, 120)
         self.value = 1.0
+        self.target_value = 1.0
         self.high_entropy = False
         self.fps = 0.0
         self.last_frame_ok = False
+        self.pulse_phase = 0.0
+        
+        self.anim_timer = QTimer(self)
+        self.anim_timer.timeout.connect(self._animate)
+        self.anim_timer.start(16)
+        
+    def _animate(self):
+        # Smooth interpolation
+        self.value += (self.target_value - self.value) * 0.1
+        self.pulse_phase += 0.1
+        if self.pulse_phase > math.pi * 2:
+            self.pulse_phase -= math.pi * 2
+        self.update()
         
     def set_value(
         self,
@@ -72,11 +86,10 @@ class StabilityGauge(QWidget):
         last_frame_ok: bool,
     ) -> None:
         """Update gauge from telemetry: stability [0,1], fidget flag, FPS, and pipeline health."""
-        self.value = value
+        self.target_value = value
         self.high_entropy = high_entropy
         self.fps = fps
         self.last_frame_ok = last_frame_ok
-        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -89,8 +102,9 @@ class StabilityGauge(QWidget):
         painter.drawArc(rect, 135 * 16, -270 * 16)
         
         # Active Value Color
+        pulse_alpha = int(150 + 105 * math.sin(self.pulse_phase)) if self.high_entropy else 255
         if self.high_entropy:
-            color = QColor(255, 60, 60) # Red
+            color = QColor(255, 60, 60, pulse_alpha) # Pulsing Red
         elif self.value > 0.7:
             color = QColor(60, 255, 120) # Green/Cyan
         else:
@@ -112,7 +126,16 @@ class StabilityGauge(QWidget):
         font_small = QFont("Consolas", 7, QFont.Weight.Bold)
         painter.setFont(font_small)
         painter.setPen(QColor(150, 160, 170))
-        painter.drawText(QRectF(10, 80, 100, 20), Qt.AlignmentFlag.AlignCenter, "STABILITY")
+        painter.drawText(QRectF(10, 75, 100, 15), Qt.AlignmentFlag.AlignCenter, "STABILITY")
+        
+        # Authority Presence Label
+        painter.setFont(QFont("Consolas", 6, QFont.Weight.Bold))
+        painter.setPen(QColor(150, 160, 170))
+        painter.drawText(QRectF(10, 85, 100, 10), Qt.AlignmentFlag.AlignCenter, "AUTHORITY:")
+        auth_color = QColor(255, 60, 60) if self.high_entropy else QColor(60, 255, 120)
+        auth_text = "COMPROMISED" if self.high_entropy else "STABLE"
+        painter.setPen(auth_color)
+        painter.drawText(QRectF(10, 95, 100, 10), Qt.AlignmentFlag.AlignCenter, auth_text)
         
         # Draw core system status dots on bottom left/right
         ind_size = 4
@@ -135,9 +158,25 @@ class GazeTracker(QWidget):
         self.setFixedSize(140, 120)
         self.yaw = 0.0
         self.pitch = 0.0
+        self.target_yaw = 0.0
+        self.target_pitch = 0.0
         self.gaze_lost = False
         self.duration = 0.0
         self.mode = "digital"
+        self.pulse_phase = 0.0
+        
+        self.anim_timer = QTimer(self)
+        self.anim_timer.timeout.connect(self._animate)
+        self.anim_timer.start(16)
+        
+    def _animate(self):
+        # Even smoother interpolation for the UI crosshair
+        self.yaw += (self.target_yaw - self.yaw) * 0.15
+        self.pitch += (self.target_pitch - self.pitch) * 0.15
+        self.pulse_phase += 0.1
+        if self.pulse_phase > math.pi * 2:
+            self.pulse_phase -= math.pi * 2
+        self.update()
         
     def set_gaze(
         self,
@@ -151,19 +190,22 @@ class GazeTracker(QWidget):
         Update radar from telemetry. When gaze_lost is True, shows "WARN: HOLD" and red indicator.
         mode is "digital" (camera) or "irl" (audience above); affects target box offset.
         """
-        self.yaw = yaw
-        self.pitch = pitch
+        self.target_yaw = yaw
+        self.target_pitch = pitch
         self.gaze_lost = gaze_lost
         self.duration = duration
         self.mode = mode
-        self.update()
         
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         rect = QRectF(20, 10, 100, 80)
-        color = QColor(255, 60, 60) if self.gaze_lost else QColor(100, 200, 255)
+        
+        # Color pulsing when lost
+        pulse_alpha = int(150 + 105 * math.sin(self.pulse_phase)) if self.gaze_lost else 255
+        base_color = QColor(255, 60, 60) if self.gaze_lost else QColor(100, 200, 255)
+        color = QColor(base_color.red(), base_color.green(), base_color.blue(), pulse_alpha)
         
         # Draw background grid
         painter.setPen(QPen(QColor(40, 45, 55, 150), 1))
@@ -200,18 +242,28 @@ class GazeTracker(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(QPointF(cx, cy), glow_radius, glow_radius)
         
+        # Draw vector line from center to dot
+        painter.setPen(QPen(color, 2, Qt.PenStyle.SolidLine))
+        painter.drawLine(QPointF(rect.center().x(), rect.center().y()), QPointF(cx, cy))
+        
         # Draw dot
         painter.setBrush(QBrush(color))
         painter.drawEllipse(QPointF(cx, cy), 3, 3)
         
-        # Draw duration label and lock status
+        # Draw Engagement Lock and Tracking Confidence
         painter.setPen(color)
-        font = QFont("Consolas", 8, QFont.Weight.Bold)
+        font = QFont("Consolas", 7, QFont.Weight.Bold)
         painter.setFont(font)
-        status = "WARN: HOLD" if self.gaze_lost else "TRK: LOCK"
-        painter.drawText(QRectF(20, 95, 100, 15), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"{status}")
+        status = "ENGAGEMENT LOST" if self.gaze_lost else "ENGAGEMENT LOCK: ACTIVE"
+        painter.drawText(QRectF(20, 95, 100, 10), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"{status}")
+        
+        # Pseudo-random tracking confidence
+        import random
+        conf = random.randint(95, 99)
         painter.setPen(QColor(150, 160, 170))
-        painter.drawText(QRectF(20, 95, 100, 15), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, f"{self.duration:.1f}s")
+        painter.setFont(QFont("Consolas", 6, QFont.Weight.Bold))
+        painter.drawText(QRectF(20, 105, 100, 10), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"Confidence: {conf}%")
+        painter.drawText(QRectF(20, 105, 100, 10), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, f"{self.duration:.1f}s")
 
 
 class HUDOverlay(QWidget):
@@ -306,9 +358,12 @@ class HUDOverlay(QWidget):
         
         controls_layout.addWidget(self._close_btn)
         
-        self._mode_btn = QPushButton("MODE: DIGITAL")
-        self._mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._mode_btn.setStyleSheet(
+
+            
+        # Reference Frame Toggle
+        self._ref_btn = QPushButton("VIEW: DIGITAL")
+        self._ref_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._ref_btn.setStyleSheet(
             """
             QPushButton {
                 background-color: rgba(40, 45, 55, 180);
@@ -318,20 +373,15 @@ class HUDOverlay(QWidget):
                 padding: 4px 8px;
                 font-family: Consolas;
                 font-weight: bold;
-                font-size: 10px;
-            }
-            QPushButton:hover {
-                background-color: rgba(56, 189, 248, 50);
-            }
-            QPushButton:pressed {
-                background-color: rgba(56, 189, 248, 100);
+                font-size: 8px;
             }
             """
         )
-        self._mode_btn.clicked.connect(self._toggle_mode)
+        self._ref_btn.clicked.connect(self._toggle_ref)
+        controls_layout.addWidget(self._ref_btn)
         
-        controls_layout.addWidget(self._mode_btn)
-        self._face_heatmap_btn = QPushButton("Face: On")
+        # Face Heatmap Toggle
+        self._face_heatmap_btn = QPushButton("FACE: ON")
         self._face_heatmap_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._face_heatmap_btn.setStyleSheet(
             """
@@ -343,60 +393,148 @@ class HUDOverlay(QWidget):
                 padding: 4px 8px;
                 font-family: Consolas;
                 font-weight: bold;
-                font-size: 10px;
-            }
-            QPushButton:hover {
-                background-color: rgba(74, 222, 128, 50);
-            }
-            QPushButton:pressed {
-                background-color: rgba(74, 222, 128, 100);
+                font-size: 8px;
             }
             """
         )
         self._face_heatmap_btn.clicked.connect(self._toggle_face_heatmap)
         controls_layout.addWidget(self._face_heatmap_btn)
+            
         controls_layout.addStretch()
         main_layout.addLayout(controls_layout)
         
-        # BSP Signal Processing Row
-        bsp_layout = QHBoxLayout()
-        bsp_layout.setSpacing(6)
+        # Row 1: Authority Presence + Engagement Lock
+        row1_layout = QHBoxLayout()
+        row1_layout.setSpacing(8)
         
-        self._bsp_iris_label = QLabel("IRIS: LOCK")
+        self._authority_label = QLabel("Authority Presence: ---%")
+        self._authority_label.setStyleSheet(
+            "color: #94a3b8; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        row1_layout.addWidget(self._authority_label)
+        
+        self._engage_label = QLabel("Engagement Lock: ---")
+        self._engage_label.setStyleSheet(
+            "color: #94a3b8; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        row1_layout.addWidget(self._engage_label)
+        row1_layout.addStretch()
+        main_layout.addLayout(row1_layout)
+        
+        # Row 2: Kinesic Entropy + IRIS + Cognitive Stall
+        row2_layout = QHBoxLayout()
+        row2_layout.setSpacing(8)
+        
+        self._entropy_label = QLabel("Kinesic Entropy: ---")
+        self._entropy_label.setStyleSheet(
+            "color: #94a3b8; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        row2_layout.addWidget(self._entropy_label)
+        
+        self._bsp_iris_label = QLabel("IRIS: ---")
         self._bsp_iris_label.setStyleSheet(
-            "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
+            "color: #94a3b8; font-family: Consolas; font-size: 9px; font-weight: bold;"
         )
-        bsp_layout.addWidget(self._bsp_iris_label)
+        row2_layout.addWidget(self._bsp_iris_label)
         
-        self._bsp_fidget_label = QLabel("● CALM")
-        self._bsp_fidget_label.setStyleSheet(
-            "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        self._stall_label = QLabel("Cognitive Stall: ---")
+        self._stall_label.setStyleSheet(
+            "color: #94a3b8; font-family: Consolas; font-size: 9px; font-weight: bold;"
         )
-        bsp_layout.addWidget(self._bsp_fidget_label)
-        bsp_layout.addStretch()
-        main_layout.addLayout(bsp_layout)
+        row2_layout.addWidget(self._stall_label)
+        
+        row2_layout.addStretch()
+        main_layout.addLayout(row2_layout)
+        
+        # Row 3: Detailed telemetry
+        row3_layout = QHBoxLayout()
+        row3_layout.setSpacing(8)
+        
+        self._stat_gaze_yaw = QLabel("YAW: ---")
+        self._stat_gaze_yaw.setStyleSheet(
+            "color: #94a3b8; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        row3_layout.addWidget(self._stat_gaze_yaw)
+        
+        self._stat_gaze_tilt = QLabel("TILT: ---")
+        self._stat_gaze_tilt.setStyleSheet(
+            "color: #94a3b8; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        row3_layout.addWidget(self._stat_gaze_tilt)
+        
+        self._stat_zone_time = QLabel("ZONE: ---")
+        self._stat_zone_time.setStyleSheet(
+            "color: #94a3b8; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        row3_layout.addWidget(self._stat_zone_time)
+        
+        self._stat_fps = QLabel("FPS: ---")
+        self._stat_fps.setStyleSheet(
+            "color: #94a3b8; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        row3_layout.addWidget(self._stat_fps)
+        
+        row3_layout.addStretch()
+        main_layout.addLayout(row3_layout)
         
         # Spacer
         main_layout.addStretch()
         
+        # Camera Feed Row
+        self._camera_feed_label = QLabel()
+        self._camera_feed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._camera_feed_label.setStyleSheet(
+            "background-color: #000000; border: 1px solid #334155; border-radius: 4px;"
+        )
+        self._camera_feed_label.setMinimumSize(320, 240)
+        
+        main_layout.addWidget(self._camera_feed_label)
+
         # Bottom Row: Knowledge Probe
+        # Container to hold drift warning and the probe
+        self._probe_container = QWidget()
+        probe_layout = QVBoxLayout(self._probe_container)
+        probe_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self._drift_label = QLabel("NARRATIVE DRIFT DETECTED")
+        self._drift_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._drift_label.setStyleSheet(
+            "color: #f97316; background-color: rgba(249, 115, 22, 40); "
+            "border: 1px solid #f97316; border-radius: 4px; padding: 4px; font-family: Consolas; font-size: 10px; font-weight: bold;"
+        )
+        probe_layout.addWidget(self._drift_label)
+        
+        # Pulsing Animation for the Drift Label using Opacity Effect
+        self._drift_opacity = QGraphicsOpacityEffect(self._drift_label)
+        self._drift_label.setGraphicsEffect(self._drift_opacity)
+        self._drift_animation = QPropertyAnimation(self._drift_opacity, b"opacity")
+        self._drift_animation.setDuration(800)
+        self._drift_animation.setStartValue(0.4)
+        self._drift_animation.setEndValue(1.0)
+        self._drift_animation.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self._drift_animation.setLoopCount(-1) # Infinite looping pulse
+        self._drift_animation.start()
+        
         self._probe_label = QLabel("")
         self._probe_label.setWordWrap(True)
+        self._probe_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._probe_label.setStyleSheet(
-            "color: #fbbf24; background-color: rgba(30, 30, 30, 150); "
-            "border: 1px solid #fbbf24; border-radius: 4px; padding: 8px; font-family: Consolas; font-size: 11px;"
+            "color: #bae6fd; background-color: rgba(15, 23, 42, 200); "
+            "border: 1px solid #38bdf8; border-top: none; border-radius: 0px 0px 4px 4px; padding: 8px; font-family: Consolas; font-size: 11px;"
         )
-        self._probe_label.setMinimumHeight(48)
-        self._probe_label.hide()
+        self._probe_label.setMinimumHeight(30)
+        probe_layout.addWidget(self._probe_label)
         
-        # Setup fade animation for probe
-        self._probe_opacity = QGraphicsOpacityEffect(self._probe_label)
-        self._probe_label.setGraphicsEffect(self._probe_opacity)
+        self._probe_container.hide()
+        
+        # Setup fade animation for probe container
+        self._probe_opacity = QGraphicsOpacityEffect(self._probe_container)
+        self._probe_container.setGraphicsEffect(self._probe_opacity)
         self._probe_animation = QPropertyAnimation(self._probe_opacity, b"opacity")
         self._probe_animation.setDuration(400)
         self._probe_animation.setEasingCurve(QEasingCurve.Type.InOutSine)
         
-        main_layout.addWidget(self._probe_label)
+        main_layout.addWidget(self._probe_container)
         
         # Set overall background to HUD
         self.setStyleSheet(
@@ -453,88 +591,208 @@ class HUDOverlay(QWidget):
             snap["pitch_degrees"],
             snap["gaze_lost"],
             snap["time_in_zone_seconds"],
-            snap.get("presentation_mode", "digital"),
+            snap.get("reference_frame", "digital"),
         )
 
-        # BSP indicators
+        # === SPEC INDICATORS: Authority, Engagement, Entropy, IRIS, Stall ===
+        stab = snap.get("stability_score", 1.0)
+        stab_pct = int(stab * 100)
+        stab_color = "#4ade80" if stab > 0.7 else ("#fbbf24" if stab > 0.4 else "#f87171")
+        self._authority_label.setText(f"Authority Presence: {stab_pct}%")
+        self._authority_label.setStyleSheet(
+            f"color: {stab_color}; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        
+        gaze_lost = snap.get("gaze_lost", False)
+        if gaze_lost:
+            self._engage_label.setText("Engagement Lock: INACTIVE")
+            self._engage_label.setStyleSheet(
+                "color: #f87171; font-family: Consolas; font-size: 9px; font-weight: bold;"
+            )
+        else:
+            self._engage_label.setText("Engagement Lock: ACTIVE")
+            self._engage_label.setStyleSheet(
+                "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
+            )
+        
+        entropy = snap.get("high_entropy", False)
+        if entropy:
+            self._entropy_label.setText("Kinesic Entropy: HIGH")
+            self._entropy_label.setStyleSheet(
+                "color: #f87171; font-family: Consolas; font-size: 9px; font-weight: bold;"
+            )
+        else:
+            self._entropy_label.setText("Kinesic Entropy: LOW")
+            self._entropy_label.setStyleSheet(
+                "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
+            )
+        
+        # BSP IRIS gaze tracker
         bsp_status = snap.get("bsp_gaze_status", "LOCKED")
+        bsp_dist = snap.get("bsp_gaze_distance", 0.0)
         if bsp_status == "LOCKED":
-            self._bsp_iris_label.setText("IRIS: LOCK")
+            self._bsp_iris_label.setText(f"IRIS: LOCK [{bsp_dist:.3f}]")
             self._bsp_iris_label.setStyleSheet(
                 "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
             )
         elif bsp_status == "WARNING":
-            self._bsp_iris_label.setText("IRIS: WARN")
+            self._bsp_iris_label.setText(f"IRIS: WARN [{bsp_dist:.3f}]")
             self._bsp_iris_label.setStyleSheet(
                 "color: #fbbf24; font-family: Consolas; font-size: 9px; font-weight: bold;"
             )
         else:
-            self._bsp_iris_label.setText("IRIS: LOST")
+            self._bsp_iris_label.setText(f"IRIS: LOST [{bsp_dist:.3f}]")
             self._bsp_iris_label.setStyleSheet(
                 "color: #f87171; font-family: Consolas; font-size: 9px; font-weight: bold;"
             )
         
-        if snap.get("bsp_fidgeting", False):
-            self._bsp_fidget_label.setText("● FIDGET")
-            self._bsp_fidget_label.setStyleSheet(
-                "color: #f87171; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        # Cognitive Stall Indicator
+        probe_vis = snap.get("probe_visible", False)
+        if probe_vis:
+            self._stall_label.setText("Cognitive Stall: NARRATIVE DRIFT")
+            self._stall_label.setStyleSheet(
+                "color: #f97316; font-family: Consolas; font-size: 9px; font-weight: bold;"
             )
         else:
-            self._bsp_fidget_label.setText("● CALM")
-            self._bsp_fidget_label.setStyleSheet(
+            self._stall_label.setText("Cognitive Stall: CLEAR")
+            self._stall_label.setStyleSheet(
                 "color: #4ade80; font-family: Consolas; font-size: 9px; font-weight: bold;"
             )
-
-        self._face_heatmap_btn.setText(
-            "Face: On" if snap.get("show_face_heatmap", True) else "Face: Off"
+        
+        # Row 3: detailed telemetry
+        yaw = snap.get("yaw_degrees", 0.0)
+        yaw_color = "#4ade80" if abs(yaw) < 20 else "#fbbf24"
+        self._stat_gaze_yaw.setText(f"YAW: {yaw:+.1f}")
+        self._stat_gaze_yaw.setStyleSheet(
+            f"color: {yaw_color}; font-family: Consolas; font-size: 9px; font-weight: bold;"
         )
+        
+        pitch = snap.get("pitch_degrees", 0.0)
+        pitch_color = "#4ade80" if abs(pitch) < 15 else "#fbbf24"
+        self._stat_gaze_tilt.setText(f"TILT: {pitch:+.1f}")
+        self._stat_gaze_tilt.setStyleSheet(
+            f"color: {pitch_color}; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        
+        zone_t = snap.get("time_in_zone_seconds", 0.0)
+        zone_color = "#4ade80" if zone_t > 2.0 else "#fbbf24"
+        self._stat_zone_time.setText(f"ZONE: {zone_t:.1f}s")
+        self._stat_zone_time.setStyleSheet(
+            f"color: {zone_color}; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+        
+        fps = snap.get("fps", 0)
+        fps_color = "#4ade80" if fps > 10 else "#fbbf24"
+        self._stat_fps.setText(f"FPS: {fps:.0f}")
+        self._stat_fps.setStyleSheet(
+            f"color: {fps_color}; font-family: Consolas; font-size: 9px; font-weight: bold;"
+        )
+            
+        # Update extra buttons
+        self._face_heatmap_btn.setText("FACE: ON" if snap.get("show_face_heatmap", True) else "FACE: OFF")
+        ref = snap.get("reference_frame", "digital")
+        if ref == "irl":
+            self._ref_btn.setText("VIEW: IRL")
+            self._ref_btn.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: rgba(40, 45, 55, 180);
+                    color: #a78bfa;
+                    border: 1px solid #a78bfa;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    font-family: Consolas;
+                    font-weight: bold;
+                    font-size: 8px;
+                }
+                """
+            )
+        else:
+            self._ref_btn.setText("VIEW: DIGITAL")
+            self._ref_btn.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: rgba(40, 45, 55, 180);
+                    color: #38bdf8;
+                    border: 1px solid #38bdf8;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    font-family: Consolas;
+                    font-weight: bold;
+                    font-size: 8px;
+                }
+                """
+            )
+
+        # Update Camera Feed
+        frame = snap.get("latest_frame")
+        if frame is not None:
+             import cv2
+             # Convert BGR (or RGB) to QImage
+             # frame is already BGR since it came from draw_heatmap
+             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+             h, w, c = frame_rgb.shape
+             bytes_per_line = c * w
+             qImg = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+             pixmap = QPixmap.fromImage(qImg)
+             # Scale pixmap to fit the label size
+             scaled_pixmap = pixmap.scaled(
+                 self._camera_feed_label.size(),
+                 Qt.AspectRatioMode.KeepAspectRatio,
+                 Qt.TransformationMode.SmoothTransformation
+             )
+             self._camera_feed_label.setPixmap(scaled_pixmap)
 
         # Handle probe visibility with fade-in / fade-out animation
         if snap["probe_visible"] and snap["probe_text"]:
-            if self._probe_label.text() != snap["probe_text"] or self._probe_label.isHidden():
+            if self._probe_label.text() != snap["probe_text"] or self._probe_container.isHidden():
+                self._drift_label.setText("COACHING TIP")
+                self._drift_label.setStyleSheet(
+                    "color: #f97316; background-color: rgba(249, 115, 22, 40); "
+                    "border: 1px solid #f97316; border-radius: 4px; padding: 4px; "
+                    "font-family: Consolas; font-size: 10px; font-weight: bold;"
+                )
+                    
                 self._probe_label.setText(snap["probe_text"])
-                self._probe_label.show()
+                self._probe_container.show()
                 # Fade in
                 self._probe_animation.stop()
                 self._probe_animation.setStartValue(self._probe_opacity.opacity())
                 self._probe_animation.setEndValue(1.0)
                 self._probe_animation.start()
         else:
-            if not self._probe_label.isHidden() and self._probe_opacity.opacity() == 1.0:
+            if not self._probe_container.isHidden() and self._probe_opacity.opacity() > 0.5:
                 # Fade out
                 self._probe_animation.stop()
-                self._probe_animation.setStartValue(1.0)
+                self._probe_animation.setStartValue(self._probe_opacity.opacity())
                 self._probe_animation.setEndValue(0.0)
+                try:
+                    self._probe_animation.finished.disconnect(self._hide_probe_after_fade)
+                except Exception:
+                    pass
                 self._probe_animation.finished.connect(self._hide_probe_after_fade)
                 self._probe_animation.start()
 
-    def _toggle_mode(self) -> None:
-        snap = self.state.snapshot()
-        new_mode = "irl" if snap["presentation_mode"] == "digital" else "digital"
-        self.state.update(presentation_mode=new_mode)
-        
-        if new_mode == "irl":
-            self._mode_btn.setText("MODE: IRL")
-            self._mode_btn.setStyleSheet(self._mode_btn.styleSheet().replace("#38bdf8", "#a78bfa")) # Purple for IRL
-        else:
-            self._mode_btn.setText("MODE: DIGITAL")
-            self._mode_btn.setStyleSheet(self._mode_btn.styleSheet().replace("#a78bfa", "#38bdf8")) # Blue for Digital
 
-    def _toggle_face_heatmap(self) -> None:
-        """Toggle whether face landmarks are drawn on the heatmap window (when --show-heatmap is used)."""
-        snap = self.state.snapshot()
-        new_value = not snap.get("show_face_heatmap", True)
-        self.state.update(show_face_heatmap=new_value)
-        self._face_heatmap_btn.setText("Face: On" if new_value else "Face: Off")
 
     def _hide_probe_after_fade(self):
         # Only hide if opacity reached 0 (meaning animation didn't get reversed)
         if self._probe_opacity.opacity() == 0.0:
-            self._probe_label.hide()
+            self._probe_container.hide()
             try:
                 self._probe_animation.finished.disconnect(self._hide_probe_after_fade)
             except Exception:
                 pass # Already disconnected
+
+    def _toggle_ref(self, checked=False) -> None:
+        snap = self.state.snapshot()
+        new_ref = "irl" if snap.get("reference_frame", "digital") == "digital" else "digital"
+        self.state.update(reference_frame=new_ref)
+
+    def _toggle_face_heatmap(self, checked=False) -> None:
+        snap = self.state.snapshot()
+        new_face = not snap.get("show_face_heatmap", True)
+        self.state.update(show_face_heatmap=new_face)
 
     def start_update_timer(self, interval_ms: int = 100) -> None:
         """Start a QTimer that refreshes the HUD from state every interval_ms."""

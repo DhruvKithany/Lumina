@@ -68,11 +68,11 @@ class GazeTracker:
         self,
         frame_width: int,
         frame_height: int,
-        pitch_min: float = -15,
-        pitch_max: float = 15,
-        yaw_min: float = -20,
-        yaw_max: float = 20,
-        gaze_lost_seconds: float = 1.5,
+        pitch_min: float = -25,
+        pitch_max: float = 25,
+        yaw_min: float = -30,
+        yaw_max: float = 30,
+        gaze_lost_seconds: float = 3.0,
     ) -> None:
         self.frame_width = frame_width
         self.frame_height = frame_height
@@ -98,7 +98,7 @@ class GazeTracker:
         # EMA Smoothing for jittery webcam solvePnP
         self._smoothed_yaw: float | None = None
         self._smoothed_pitch: float | None = None
-        self._smoothing_factor: float = 0.15  # lower = smoother (more latency), higher = responsive (more jitter)
+        self._smoothing_factor: float = 0.15  # balanced: smooth but responsive
 
     def _landmarks_to_image_points(self, landmarks: Sequence[object]) -> np.ndarray | None:
         """Extract 2D image points for MODEL_POINTS_3D order. landmarks are normalized [0,1]."""
@@ -119,7 +119,7 @@ class GazeTracker:
         self,
         landmarks: Sequence[object],
         timestamp: float,
-        presentation_mode: str = "digital",
+        reference_frame: str = "digital",
     ) -> tuple[bool, float, float, float]:
         """
         Update head pose from face mesh landmarks.
@@ -156,9 +156,9 @@ class GazeTracker:
         final_yaw = self._smoothed_yaw
         final_pitch = self._smoothed_pitch
 
-        # Shift target zone based on presentation mode
+        # Shift target zone based on reference frame
         # "irl" target is looking ABOVE the camera (negative pitch in UI space)
-        pitch_shift = -15.0 if presentation_mode == "irl" else 0.0
+        pitch_shift = -15.0 if reference_frame == "irl" else 0.0
 
         in_zone = (
             (self.pitch_min + pitch_shift) <= final_pitch <= (self.pitch_max + pitch_shift)

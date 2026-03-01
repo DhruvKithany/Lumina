@@ -191,14 +191,14 @@ class CVPipeline:
         # Backend signal-processing unit (BSP) detectors
         bsp_cfg = self.config.get("bsp", {})
         self.bsp_fidget = BSPFidgetDetector(
-            threshold=bsp_cfg.get("fidget_threshold", 0.002),
-            window_size=bsp_cfg.get("fidget_window_size", 30),
-            smoothing_window=bsp_cfg.get("fidget_smoothing_window", 5),
+            threshold=bsp_cfg.get("fidget_threshold", 0.0008),
+            window_size=bsp_cfg.get("fidget_window_size", 45),
+            smoothing_window=bsp_cfg.get("fidget_smoothing_window", 3),
         )
         self.bsp_gaze = BSPGazeTracker(
-            deviation_threshold=bsp_cfg.get("gaze_deviation_threshold", 0.05),
-            time_threshold=bsp_cfg.get("gaze_time_threshold", 1.5),
-            smoothing_window=bsp_cfg.get("gaze_smoothing_window", 8),
+            deviation_threshold=bsp_cfg.get("gaze_deviation_threshold", 0.12),
+            time_threshold=bsp_cfg.get("gaze_time_threshold", 3.0),
+            smoothing_window=bsp_cfg.get("gaze_smoothing_window", 12),
         )
         self._stop = threading.Event()
         self._frame_count = 0
@@ -235,11 +235,15 @@ class CVPipeline:
                 yaw_degrees=0.0,
                 pitch_degrees=0.0,
                 last_frame_ok=True,
+                bsp_gaze_status="GAZE LOST",
+                bsp_gaze_distance=-1.0,
             )
         elif results.face_landmarks:
             lms = getattr(results.face_landmarks, "landmark", None) or []
+            snap = self.state.snapshot()
+            current_ref = snap.get("reference_frame", "digital")
             gaze_lost, time_in_zone, yaw, pitch = self.gaze_tracker.update(
-                lms, timestamp, self.state.presentation_mode
+                lms, timestamp, current_ref
             )
             self.state.update(
                 gaze_lost=gaze_lost,
@@ -255,17 +259,26 @@ class CVPipeline:
                 bsp_gaze_distance=bsp_dist,
             )
         else:
-            self.state.update(gaze_lost=True, last_frame_ok=True)
+            self.state.update(
+                gaze_lost=True,
+                last_frame_ok=True,
+                bsp_gaze_status="GAZE LOST",
+                bsp_gaze_distance=-1.0,
+            )
         raw = _extract_raw_landmarks(results.pose_landmarks, results.face_landmarks)
         self.state.update(raw_landmarks=raw)
+        
+        # Always generate the heatmap for the HUD
+        draw_face = self.state.snapshot().get("show_face_heatmap", True)
+        annotated = draw_heatmap(
+            frame, results,
+            window_title=self._heatmap_window_title,
+            draw_face=draw_face,
+        )
+        self.state.update(latest_frame=annotated)
+        
         if self._heatmap_enabled and self._heatmap_queue is not None:
             try:
-                draw_face = self.state.snapshot().get("show_face_heatmap", True)
-                annotated = draw_heatmap(
-                    frame, results,
-                    window_title=self._heatmap_window_title,
-                    draw_face=draw_face,
-                )
                 if self._heatmap_queue.full():
                     try:
                         self._heatmap_queue.get_nowait()

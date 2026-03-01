@@ -32,7 +32,8 @@ class TelemetryState:
     time_in_zone_seconds: float = 0.0
     yaw_degrees: float = 0.0
     pitch_degrees: float = 0.0
-    presentation_mode: str = "digital"  # "digital" (camera) or "irl" (audience above)
+    presentation_mode: str = "pitch"  # "pitch", "q&a", or "interview"
+    reference_frame: str = "digital"  # "digital" (camera) or "irl" (audience above)
 
     # Backend signal-processing unit (BSP) outputs
     bsp_gaze_status: str = "LOCKED"  # "LOCKED", "WARNING", or "GAZE LOST"
@@ -53,6 +54,9 @@ class TelemetryState:
 
     # Heatmap overlay: when True, face landmarks are drawn on the heatmap window.
     show_face_heatmap: bool = True
+
+    # Latest camera frame for HUD overlay
+    latest_frame: Any = None
 
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -75,6 +79,7 @@ class TelemetryState:
                 "yaw_degrees": self.yaw_degrees,
                 "pitch_degrees": self.pitch_degrees,
                 "presentation_mode": self.presentation_mode,
+                "reference_frame": self.reference_frame,
                 "bsp_gaze_status": self.bsp_gaze_status,
                 "bsp_gaze_distance": self.bsp_gaze_distance,
                 "bsp_fidgeting": self.bsp_fidgeting,
@@ -85,6 +90,7 @@ class TelemetryState:
                 "fps": self.fps,
                 "raw_landmarks": dict(self.raw_landmarks),
                 "show_face_heatmap": self.show_face_heatmap,
+                "latest_frame": self.latest_frame,
             }
 
 
