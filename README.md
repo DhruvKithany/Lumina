@@ -1,13 +1,12 @@
 <p align="center">
   <h1 align="center">✦ Lumina-Presenter</h1>
   <p align="center">
-    <strong>Real-time AI presenter coaching — powered by nothing but your laptop webcam.</strong>
+    <strong>Real-time presenter coaching, powered by nothing but your laptop webcam.</strong>
   </p>
   <p align="center">
     <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10+">
     <img src="https://img.shields.io/badge/cv-MediaPipe-4285F4?logo=google&logoColor=white" alt="MediaPipe">
     <img src="https://img.shields.io/badge/ui-PyQt6-41CD52?logo=qt&logoColor=white" alt="PyQt6">
-    <img src="https://img.shields.io/badge/ai-Groq%20%2B%20Llama-FF6B35" alt="Groq + Llama">
   </p>
 </p>
 
