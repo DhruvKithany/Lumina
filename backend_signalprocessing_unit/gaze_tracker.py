@@ -29,15 +29,29 @@ LEFT_IRIS_INDICES = (468, 469, 470, 471, 472)
 RIGHT_IRIS_INDICES = (473, 474, 475, 476, 477)
 
 
+# MediaPipe eye corner landmark indices for computing eye socket center
+# Left eye: inner corner (133), outer corner (33)
+# Right eye: inner corner (362), outer corner (263)
+LEFT_EYE_INNER = 133
+LEFT_EYE_OUTER = 33
+RIGHT_EYE_INNER = 362
+RIGHT_EYE_OUTER = 263
+
+
 class GazeTracker:
     """
     Tracks iris position from Face Mesh landmarks and determines
     whether the presenter's gaze is locked on camera.
 
+    Iris deviation is measured relative to the **eye socket center**
+    (midpoint of inner/outer eye corners), NOT the frame center.
+    This makes the measurement accurate regardless of face position
+    in the frame.
+
     Parameters
     ----------
     deviation_threshold : float
-        Maximum normalized Euclidean distance from frame center
+        Maximum normalized Euclidean distance from eye center
         before gaze is considered "off".
     time_threshold : float
         Seconds of continuous off-gaze before status becomes "GAZE LOST".
@@ -86,6 +100,34 @@ class GazeTracker:
 
         return float(np.mean(xs)), float(np.mean(ys))
 
+    @staticmethod
+    def _extract_eye_center(
+        landmarks: Sequence[object],
+    ) -> tuple[float, float] | None:
+        """
+        Compute the midpoint of the four eye corners (inner + outer, both eyes).
+        This gives the center of the eye socket region, which is used as the
+        reference point for iris deviation instead of frame center (0.5, 0.5).
+        """
+        indices = (LEFT_EYE_INNER, LEFT_EYE_OUTER, RIGHT_EYE_INNER, RIGHT_EYE_OUTER)
+        required = max(indices) + 1
+        if len(landmarks) < required:
+            return None
+
+        xs, ys = [], []
+        for idx in indices:
+            lm = landmarks[idx]
+            x = getattr(lm, "x", None)
+            y = getattr(lm, "y", None)
+            if x is None:
+                x = lm[0]
+            if y is None:
+                y = lm[1]
+            xs.append(x)
+            ys.append(y)
+
+        return float(np.mean(xs)), float(np.mean(ys))
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -104,19 +146,24 @@ class GazeTracker:
         landmarks : Sequence
             MediaPipe Face Mesh landmarks (must include refined iris points).
         center_x, center_y : float
-            Normalized frame center (default 0.5, 0.5).
+            Fallback frame center (used only if eye corners can't be extracted).
 
         Returns
         -------
         status : str
             One of "LOCKED", "WARNING", or "GAZE LOST".
         distance : float
-            Smoothed Euclidean distance from iris center to frame center.
+            Smoothed Euclidean distance from iris center to eye socket center.
         """
         iris = self._extract_iris_center(landmarks)
         if iris is None:
             # No iris data — treat as gaze lost immediately
             return "GAZE LOST", -1.0
+
+        # Use eye socket center as reference (face-relative, not frame-relative)
+        eye_center = self._extract_eye_center(landmarks)
+        if eye_center is not None:
+            center_x, center_y = eye_center
 
         iris_x, iris_y = iris
 

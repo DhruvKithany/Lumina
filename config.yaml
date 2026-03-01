@@ -48,8 +48,8 @@ bsp:
 
 # HUD overlay
 hud:
-  width: 480
-  height: 360
+  width: 560
+  height: 460
   update_interval_ms: 100
   # Position: "top_right" | "top_left" | "bottom_right" | "bottom_left"
   position: "top_right"

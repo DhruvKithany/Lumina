@@ -24,8 +24,13 @@ except ImportError:
 if TYPE_CHECKING:
     pass
 
-# ── Data-driven tip rules ──────────────────────────────────────────
-# Each rule is (condition_fn, tip_text). First matching rule wins.
+# ── Data-driven tip rules (priority-tiered) ────────────────────────
+#
+# Tips are organized into PRIORITY TIERS. The selector picks from the
+# highest-priority tier that has matching conditions, so data-driven
+# tips (gaze lost, fidgeting) always beat generic filler.
+#
+# Tiers:  CRITICAL → WARNING → GENTLE → FILLER
 
 def _gaze_lost(s: dict) -> bool:
     return s.get("gaze_lost", False)
@@ -45,39 +50,56 @@ def _low_stability(s: dict) -> bool:
 def _medium_stability(s: dict) -> bool:
     return s.get("stability_score", 1.0) < 0.8
 
-def _always(s: dict) -> bool:
-    return True
 
-
-CONTEXTUAL_TIPS = [
-    (_gaze_lost,        "[!] Re-establish eye contact with the camera lens now."),
-    (_gaze_lost,        "[!] Your gaze has drifted -- look directly at the sensor."),
-    (_iris_warning,     "[!] Iris deviation detected -- center your gaze."),
-    (_high_entropy,     "[!] High kinesic entropy -- anchor your hands and breathe."),
-    (_high_entropy,     "[!] Excessive micro-movements detected. Ground your posture."),
-    (_fidgeting,        "[!] Wrist variance elevated -- keep hands still or gesture deliberately."),
-    (_fidgeting,        "[!] Fidget detected -- place hands on desk or clasp naturally."),
-    (_low_stability,    "[~] Stability dropping -- slow your breathing, square shoulders."),
-    (_low_stability,    "[~] Authority presence weakening -- project calm, deliberate energy."),
-    (_medium_stability, "[>] Consider a 2-second power pause before your next point."),
-    (_medium_stability, "[>] Lower your vocal register -- deeper tone conveys confidence."),
-    (_always,           "[>] Pivot narrative to unit economics and market defensibility."),
-    (_always,           "[>] Reiterate your competitive moat -- what can't be replicated."),
-    (_always,           "[>] Address sub-pixel iris tracking architecture advantages."),
-    (_always,           "[>] Emphasize the data flywheel effect in your pipeline."),
-    (_always,           "[>] Mention reinforcement learning optimization loops."),
-    (_always,           "[>] Highlight non-intrusive sensory loop benefits."),
-    (_always,           "[>] Summarize your last point before transitioning."),
-    (_always,           "[>] Reference your TAM/SAM/SOM breakdown."),
-    (_always,           "[>] Transition to the live demo -- show, don't tell."),
+# CRITICAL — immediate corrective action needed
+CRITICAL_TIPS = [
+    (_gaze_lost,    "[!] Re-establish eye contact with the camera lens now."),
+    (_gaze_lost,    "[!] Your gaze has drifted — look directly at the sensor."),
+    (_iris_warning, "[!] Iris deviation detected — center your gaze on the lens."),
+    (_iris_warning, "[!] Eye tracking shows off-center focus — realign."),
 ]
+
+# WARNING — body language flags
+WARNING_TIPS = [
+    (_high_entropy, "[!] High kinesic entropy — anchor your hands and breathe."),
+    (_high_entropy, "[!] Excessive micro-movements detected. Ground your posture."),
+    (_fidgeting,    "[!] Wrist variance elevated — keep hands still or gesture deliberately."),
+    (_fidgeting,    "[!] Fidget detected — place hands on desk or clasp naturally."),
+    (_low_stability,"[~] Stability dropping — slow your breathing, square shoulders."),
+    (_low_stability,"[~] Authority presence weakening — project calm, deliberate energy."),
+]
+
+# GENTLE — mild suggestions when things are mostly fine
+GENTLE_TIPS = [
+    (_medium_stability, "[>] Consider a 2-second power pause before your next point."),
+    (_medium_stability, "[>] Lower your vocal register — deeper tone conveys confidence."),
+    (_medium_stability, "[>] Reduce gesture velocity — smooth motions read as authority."),
+]
+
+# FILLER — shown only when ALL biometrics are green (nothing to correct)
+FILLER_TIPS = [
+    "[>] Summarize your last point before transitioning.",
+    "[>] Use a power pause — silence commands attention.",
+    "[>] Project to the back of the room with your voice.",
+    "[>] Open your next point with a concrete data point.",
+    "[>] Vary your pacing — slow down for key arguments.",
+    "[>] Make eye contact with different quadrants of the audience.",
+    "[>] Transition with a bridging phrase: 'Building on that...'",
+    "[>] Check your posture — shoulders back, chin level.",
+    "[>] Smile briefly — it resets audience perception of confidence.",
+]
+
+# Ordered from highest to lowest priority
+_TIERED_TIPS = [CRITICAL_TIPS, WARNING_TIPS, GENTLE_TIPS]
 
 
 class ProbeInjector:
     """
-    Pushes data-driven coaching tips to the HUD. Tips are contextual:
-    if gaze is lost it tells you to re-establish eye contact, if fidgeting
-    it tells you to anchor your hands, etc.
+    Pushes priority-tiered coaching tips to the HUD.
+
+    When the CV pipeline detects issues (gaze lost, fidgeting, low stability),
+    the injector shows THOSE specific tips. Only when all biometrics are green
+    does it fall back to generic presentation advice.
     """
 
     def __init__(
@@ -88,6 +110,7 @@ class ProbeInjector:
         self.state = state
         self._generic_probes = load_probes(probes_path)
         self._tip_index = 0
+        self._filler_index = 0
         self._stall_detector = None
 
         # Periodic timer
@@ -99,21 +122,26 @@ class ProbeInjector:
     # ── Pick the best tip based on current telemetry ───────────────
 
     def _pick_contextual_tip(self) -> str:
-        """Select a tip that matches the current telemetry state."""
+        """
+        Select a tip from the highest-priority tier that has a matching
+        condition.  If no data-driven conditions fire, fall through to
+        generic filler tips.
+        """
         snap = self.state.snapshot()
 
-        # Find all matching tips
-        matching = [tip for cond, tip in CONTEXTUAL_TIPS if cond(snap)]
+        # Walk tiers top-down; first tier with matches wins
+        for tier in _TIERED_TIPS:
+            matching = [tip for cond, tip in tier if cond(snap)]
+            if matching:
+                tip = matching[self._tip_index % len(matching)]
+                self._tip_index += 1
+                return tip
 
-        if matching:
-            tip = matching[self._tip_index % len(matching)]
-            self._tip_index += 1
-            return tip
-
-        # Ultimate fallback
-        if self._generic_probes:
-            tip = self._generic_probes[self._tip_index % len(self._generic_probes)]
-            self._tip_index += 1
+        # All biometrics green — use filler tips
+        pool = FILLER_TIPS if FILLER_TIPS else self._generic_probes
+        if pool:
+            tip = pool[self._filler_index % len(pool)]
+            self._filler_index += 1
             return tip
 
         return "→ Maintain steady eye contact with the camera lens."

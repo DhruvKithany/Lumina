@@ -55,6 +55,11 @@ class TelemetryState:
     # Heatmap overlay: when True, face landmarks are drawn on the heatmap window.
     show_face_heatmap: bool = True
 
+    # Script tracking
+    script_loaded: bool = False
+    script_progress: float = 0.0  # 0.0 to 1.0
+    recording_active: bool = False
+
     # Latest camera frame for HUD overlay
     latest_frame: Any = None
 
@@ -90,6 +95,9 @@ class TelemetryState:
                 "fps": self.fps,
                 "raw_landmarks": dict(self.raw_landmarks),
                 "show_face_heatmap": self.show_face_heatmap,
+                "script_loaded": self.script_loaded,
+                "script_progress": self.script_progress,
+                "recording_active": self.recording_active,
                 "latest_frame": self.latest_frame,
             }
 

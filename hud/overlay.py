@@ -18,7 +18,7 @@ import math
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QTimer, Qt, QPropertyAnimation, QRectF, QPointF, QEasingCurve
+from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
 from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QBrush, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
@@ -27,8 +27,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QWidget,
     QPushButton,
-    QGraphicsOpacityEffect,
-    QGraphicsDropShadowEffect,
 )
 
 from core.state import TelemetryState
@@ -50,6 +48,9 @@ def _default_position_rect(
     sx, sy, sw, sh = screen_geometry
     x = sx + sw - width - margin if "right" in position else sx + margin
     y = sy + margin if "top" in position else sy + sh - height - margin
+    # Clamp to ensure valid screen coordinates
+    x = max(0, x)
+    y = max(0, y)
     return x, y, width, height
 
 
@@ -277,8 +278,8 @@ class HUDOverlay(QWidget):
     def __init__(
         self,
         state: TelemetryState,
-        width: int = 340,
-        height: int = 240,
+        width: int = 560,
+        height: int = 460,
         position: str = "top_right",
         margin: int = 24,
         parent: QWidget | None = None,
@@ -317,16 +318,15 @@ class HUDOverlay(QWidget):
         gauge_layout.addWidget(self._gaze_tracker)
         gauge_layout.addStretch()
         
-        # Add a neon glow to the entire top row
-        glow = QGraphicsDropShadowEffect(self)
-        glow.setBlurRadius(25)
-        glow.setColor(QColor(56, 189, 248, 80)) # Light blue glow
-        glow.setOffset(0, 0)
-        
-        # We need a wrapper widget to apply the effect to the layout
+        # Wrap gauges in a styled widget (CSS glow instead of QGraphicsEffect
+        # to avoid QPainter conflicts with animation timers)
         gauge_wrapper = QWidget()
         gauge_wrapper.setLayout(gauge_layout)
-        gauge_wrapper.setGraphicsEffect(glow)
+        gauge_wrapper.setStyleSheet(
+            "border: 1px solid rgba(56, 189, 248, 60); "
+            "border-radius: 8px; "
+            "background-color: rgba(56, 189, 248, 8);"
+        )
         main_layout.addWidget(gauge_wrapper)
         
         # Status/Controls Row
@@ -399,6 +399,27 @@ class HUDOverlay(QWidget):
         )
         self._face_heatmap_btn.clicked.connect(self._toggle_face_heatmap)
         controls_layout.addWidget(self._face_heatmap_btn)
+        
+        # REC Button (only visible when script is loaded)
+        self._rec_btn = QPushButton("\u23fa REC")
+        self._rec_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._rec_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: rgba(40, 45, 55, 180);
+                color: #94a3b8;
+                border: 1px solid #94a3b8;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-family: Consolas;
+                font-weight: bold;
+                font-size: 8px;
+            }
+            """
+        )
+        self._rec_btn.clicked.connect(self._toggle_recording)
+        self._rec_btn.setEnabled(False)  # Disabled until script is loaded
+        controls_layout.addWidget(self._rec_btn)
             
         controls_layout.addStretch()
         main_layout.addLayout(controls_layout)
@@ -504,16 +525,11 @@ class HUDOverlay(QWidget):
         )
         probe_layout.addWidget(self._drift_label)
         
-        # Pulsing Animation for the Drift Label using Opacity Effect
-        self._drift_opacity = QGraphicsOpacityEffect(self._drift_label)
-        self._drift_label.setGraphicsEffect(self._drift_opacity)
-        self._drift_animation = QPropertyAnimation(self._drift_opacity, b"opacity")
-        self._drift_animation.setDuration(800)
-        self._drift_animation.setStartValue(0.4)
-        self._drift_animation.setEndValue(1.0)
-        self._drift_animation.setEasingCurve(QEasingCurve.Type.InOutSine)
-        self._drift_animation.setLoopCount(-1) # Infinite looping pulse
-        self._drift_animation.start()
+        # Pulsing animation via QTimer + CSS color cycling (avoids QGraphicsEffect conflicts)
+        self._drift_pulse_phase = 0.0
+        self._drift_pulse_timer = QTimer(self)
+        self._drift_pulse_timer.timeout.connect(self._pulse_drift_label)
+        self._drift_pulse_timer.start(50)
         
         self._probe_label = QLabel("")
         self._probe_label.setWordWrap(True)
@@ -526,13 +542,6 @@ class HUDOverlay(QWidget):
         probe_layout.addWidget(self._probe_label)
         
         self._probe_container.hide()
-        
-        # Setup fade animation for probe container
-        self._probe_opacity = QGraphicsOpacityEffect(self._probe_container)
-        self._probe_container.setGraphicsEffect(self._probe_opacity)
-        self._probe_animation = QPropertyAnimation(self._probe_opacity, b"opacity")
-        self._probe_animation.setDuration(400)
-        self._probe_animation.setEasingCurve(QEasingCurve.Type.InOutSine)
         
         main_layout.addWidget(self._probe_container)
         
@@ -743,7 +752,7 @@ class HUDOverlay(QWidget):
              )
              self._camera_feed_label.setPixmap(scaled_pixmap)
 
-        # Handle probe visibility with fade-in / fade-out animation
+        # Handle probe visibility (simple show/hide, no QGraphicsEffect)
         if snap["probe_visible"] and snap["probe_text"]:
             if self._probe_label.text() != snap["probe_text"] or self._probe_container.isHidden():
                 self._drift_label.setText("COACHING TIP")
@@ -752,37 +761,64 @@ class HUDOverlay(QWidget):
                     "border: 1px solid #f97316; border-radius: 4px; padding: 4px; "
                     "font-family: Consolas; font-size: 10px; font-weight: bold;"
                 )
-                    
                 self._probe_label.setText(snap["probe_text"])
                 self._probe_container.show()
-                # Fade in
-                self._probe_animation.stop()
-                self._probe_animation.setStartValue(self._probe_opacity.opacity())
-                self._probe_animation.setEndValue(1.0)
-                self._probe_animation.start()
         else:
-            if not self._probe_container.isHidden() and self._probe_opacity.opacity() > 0.5:
-                # Fade out
-                self._probe_animation.stop()
-                self._probe_animation.setStartValue(self._probe_opacity.opacity())
-                self._probe_animation.setEndValue(0.0)
-                try:
-                    self._probe_animation.finished.disconnect(self._hide_probe_after_fade)
-                except Exception:
-                    pass
-                self._probe_animation.finished.connect(self._hide_probe_after_fade)
-                self._probe_animation.start()
+            if not self._probe_container.isHidden():
+                self._probe_container.hide()
 
+        # REC button state
+        script_loaded = snap.get("script_loaded", False)
+        self._rec_btn.setEnabled(script_loaded)
+        if script_loaded:
+            recording = snap.get("recording_active", False)
+            progress = snap.get("script_progress", 0.0)
+            pct = int(progress * 100)
+            if recording:
+                self._rec_btn.setText(f"\u23fa REC {pct}%")
+                self._rec_btn.setStyleSheet(
+                    """
+                    QPushButton {
+                        background-color: rgba(248, 113, 113, 0.25);
+                        color: #f87171;
+                        border: 1px solid #f87171;
+                        border-radius: 4px;
+                        padding: 4px 8px;
+                        font-family: Consolas;
+                        font-weight: bold;
+                        font-size: 8px;
+                    }
+                    """
+                )
+            else:
+                self._rec_btn.setText("\u23fa REC")
+                self._rec_btn.setStyleSheet(
+                    """
+                    QPushButton {
+                        background-color: rgba(40, 45, 55, 180);
+                        color: #94a3b8;
+                        border: 1px solid #94a3b8;
+                        border-radius: 4px;
+                        padding: 4px 8px;
+                        font-family: Consolas;
+                        font-weight: bold;
+                        font-size: 8px;
+                    }
+                    """
+                )
 
-
-    def _hide_probe_after_fade(self):
-        # Only hide if opacity reached 0 (meaning animation didn't get reversed)
-        if self._probe_opacity.opacity() == 0.0:
-            self._probe_container.hide()
-            try:
-                self._probe_animation.finished.disconnect(self._hide_probe_after_fade)
-            except Exception:
-                pass # Already disconnected
+    def _pulse_drift_label(self) -> None:
+        """CSS-based pulsing for drift label (avoids QGraphicsEffect)."""
+        import math
+        self._drift_pulse_phase += 0.15
+        if self._drift_pulse_phase > math.pi * 2:
+            self._drift_pulse_phase -= math.pi * 2
+        alpha = int(100 + 155 * abs(math.sin(self._drift_pulse_phase)))
+        self._drift_label.setStyleSheet(
+            f"color: rgba(249, 115, 22, {alpha}); background-color: rgba(249, 115, 22, {alpha // 6}); "
+            f"border: 1px solid rgba(249, 115, 22, {alpha}); border-radius: 4px; padding: 4px; "
+            f"font-family: Consolas; font-size: 10px; font-weight: bold;"
+        )
 
     def _toggle_ref(self, checked=False) -> None:
         snap = self.state.snapshot()
@@ -793,6 +829,11 @@ class HUDOverlay(QWidget):
         snap = self.state.snapshot()
         new_face = not snap.get("show_face_heatmap", True)
         self.state.update(show_face_heatmap=new_face)
+
+    def _toggle_recording(self, checked=False) -> None:
+        snap = self.state.snapshot()
+        new_rec = not snap.get("recording_active", False)
+        self.state.update(recording_active=new_rec)
 
     def start_update_timer(self, interval_ms: int = 100) -> None:
         """Start a QTimer that refreshes the HUD from state every interval_ms."""

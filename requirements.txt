@@ -12,3 +12,7 @@ PyYAML>=6.0
 # On Windows these may require pre-built wheels or Visual C++ Build Tools
 webrtcvad>=2.0.10
 pyaudio>=0.2.14
+
+# Script upload + speech tracking
+pdfplumber>=0.9.0
+SpeechRecognition>=3.10.0

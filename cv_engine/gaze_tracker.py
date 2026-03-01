@@ -98,7 +98,7 @@ class GazeTracker:
         # EMA Smoothing for jittery webcam solvePnP
         self._smoothed_yaw: float | None = None
         self._smoothed_pitch: float | None = None
-        self._smoothing_factor: float = 0.15  # balanced: smooth but responsive
+        self._smoothing_factor: float = 0.08  # lower = smoother (less jitter), higher = more responsive
 
     def _landmarks_to_image_points(self, landmarks: Sequence[object]) -> np.ndarray | None:
         """Extract 2D image points for MODEL_POINTS_3D order. landmarks are normalized [0,1]."""

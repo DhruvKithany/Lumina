@@ -21,13 +21,18 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QLabel,
     QTextEdit,
-    QGraphicsDropShadowEffect
+    QGraphicsDropShadowEffect,
+    QFileDialog,
+    QComboBox,
 )
 
 from core.state import TelemetryState, load_config
 from cv_engine.pipeline import CVPipeline
 from hud.overlay import HUDOverlay
 from probes.injector import ProbeInjector
+from probes.qa_listener import QAListener
+from probes.script_loader import load_script, segment_script
+from probes.script_tracker import ScriptTracker
 
 
 _project_root = Path(__file__).resolve().parent
@@ -36,7 +41,7 @@ class LauncherWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Lumina-Presenter Core")
-        self.setFixedSize(500, 500)
+        self.setFixedSize(560, 680)
         
         # Style the window to look like a modern AI tool
         self.setStyleSheet("""
@@ -207,6 +212,49 @@ class LauncherWindow(QMainWindow):
         btn_layout.addWidget(self.mock_btn)
         btn_layout.addWidget(self.main_btn)
         layout.addLayout(btn_layout)
+        
+        # Script Upload Button
+        self.script_btn = QPushButton("📄 UPLOAD SCRIPT\n(PDF or TXT)")
+        self.script_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.script_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #1e293b; color: #fbbf24; border: 1px solid #fbbf24;
+                border-radius: 6px; padding: 8px; font-family: Consolas; font-size: 11px;
+                font-weight: bold; margin: 5px;
+            }
+            QPushButton:hover { background-color: rgba(251, 191, 36, 0.1); }
+            """
+        )
+        self.script_btn.clicked.connect(self._upload_script)
+        layout.addWidget(self.script_btn)
+
+        # Microphone Selector
+        mic_layout = QHBoxLayout()
+        mic_label = QLabel("\U0001f3a4 INPUT DEVICE:")
+        mic_label.setStyleSheet(
+            "color: #94a3b8; font-family: Consolas; font-size: 10px; font-weight: bold;"
+        )
+        mic_layout.addWidget(mic_label)
+
+        self.mic_combo = QComboBox()
+        self.mic_combo.setStyleSheet(
+            """
+            QComboBox {
+                background-color: #1e293b; color: #38bdf8; border: 1px solid #334155;
+                border-radius: 4px; padding: 4px 8px; font-family: Consolas; font-size: 10px;
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView {
+                background-color: #1e293b; color: #38bdf8; border: 1px solid #334155;
+                selection-background-color: rgba(56, 189, 248, 0.2);
+                font-family: Consolas; font-size: 10px;
+            }
+            """
+        )
+        self._populate_mic_list()
+        mic_layout.addWidget(self.mic_combo, stretch=1)
+        layout.addLayout(mic_layout)
 
         # Terminal Log
         self.log = QTextEdit()
@@ -225,6 +273,8 @@ class LauncherWindow(QMainWindow):
         # HUD reference
         self.hud = None
         self.injector = None
+        self.qa_listener = None
+        self.script_tracker = None
 
         
         # Setup Timer to update video feed & live readouts
@@ -288,7 +338,7 @@ class LauncherWindow(QMainWindow):
             self.log.append("\n> [ SYSTEM READY ] All biomteric sensors calibrated. You may launch.")
 
     def launch_mock(self):
-        self._start_process(["python", "hud/mock_engine.py"])
+        self._start_process([sys.executable, "hud/mock_engine.py"])
 
     def launch_main(self):
         self.log.append("\n> Executing: Internal HUD Launch")
@@ -323,6 +373,13 @@ class LauncherWindow(QMainWindow):
         self.hud.show()
         self.hud.start_update_timer(hud_cfg.get("update_interval_ms", 100))
         
+        # Start Q&A listener (also handles script tracking when recording)
+        mic_idx = self.mic_combo.currentData()
+        self.qa_listener = QAListener(self.state, device_index=mic_idx)
+        if self.script_tracker is not None:
+            self.qa_listener.set_script_tracker(self.script_tracker)
+        self.qa_listener.start()
+        
         # Minimize the launcher window so it gets out of the way
         self.showMinimized()
 
@@ -345,12 +402,72 @@ class LauncherWindow(QMainWindow):
         self.pipeline.stop()
         if self.injector:
             self.injector.stop_stall_detection()
-
+        if self.qa_listener:
+            self.qa_listener.stop()
         if self.hud:
             self.hud.close()
         if self.process is not None:
             self.process.terminate()
         event.accept()
+
+    def _populate_mic_list(self):
+        """Enumerate available audio input devices and fill the combo box."""
+        self.mic_combo.clear()
+        self.mic_combo.addItem("Default (system)", None)
+        try:
+            import pyaudio
+            pa = pyaudio.PyAudio()
+            for i in range(pa.get_device_count()):
+                info = pa.get_device_info_by_index(i)
+                if info.get("maxInputChannels", 0) > 0:
+                    name = info.get("name", f"Device {i}")
+                    self.mic_combo.addItem(f"[{i}] {name}", i)
+            pa.terminate()
+        except Exception as e:
+            self.mic_combo.addItem(f"(PyAudio unavailable: {e})", None)
+
+    def _upload_script(self):
+        """Open file dialog to upload a script (PDF/TXT) for tracking."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Upload Presentation Script",
+            str(_project_root),
+            "Documents (*.pdf *.txt *.md);;All Files (*)",
+        )
+        if not path:
+            return
+        
+        try:
+            text = load_script(path)
+            segments = segment_script(text)
+            if not segments:
+                self.log.append(f"> Script loaded but no text segments found in: {path}")
+                return
+            
+            self.script_tracker = ScriptTracker(segments)
+            self.state.update(script_loaded=True, script_progress=0.0)
+            
+            # If QA listener is already running, wire the tracker
+            if self.qa_listener is not None:
+                self.qa_listener.set_script_tracker(self.script_tracker)
+            
+            self.log.append(f"\n> Script loaded: {Path(path).name}")
+            self.log.append(f"> Extracted {len(segments)} talking points.")
+            self.log.append(f"> Preview: \"{segments[0][:80]}...\"")
+            self.log.append("> Press ⏺ REC in the HUD to start script tracking.")
+            
+            self.script_btn.setText(f"📄 SCRIPT: {Path(path).stem[:20]}")
+            self.script_btn.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: rgba(251, 191, 36, 0.15); color: #fbbf24;
+                    border: 1px solid #fbbf24; border-radius: 6px; padding: 8px;
+                    font-family: Consolas; font-size: 11px; font-weight: bold; margin: 5px;
+                }
+                """
+            )
+        except Exception as e:
+            self.log.append(f"> Error loading script: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
