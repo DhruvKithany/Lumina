@@ -48,17 +48,16 @@ This is the official squad breakdown, demonstrating our professional-grade AI de
 ### HUD Architects (Frontend) — Dhruv & Chaaki
 - **The Mission:** Build the Affective User Interface. Responsible for the "Always-on-Top" transparent HUD that the presenter actually sees.
 - **The Code:** Using PyQt6 and CSS to design glowing "Stability Meters," "Gaze Lock" bars, and the "Knowledge Probe" pop-ups that fade in and out.
-- **The "Larp" Factor:** Making the project look like a $50M Silicon Valley product. Because if the UI looks like a fighter jet cockpit, the judges will believe the math is genius.
+
 
 ### Computer Vision Engineer — Nathan
 - **The Mission:** Manage the Sensory Input Layer. He is the "Eyes" of the system, extracting data from the single monocular laptop camera.
 - **The Code:** Implementing MediaPipe Holistic and Face Mesh. He’s responsible for the raw (x,y,z) coordinate mapping of the irises, shoulders, and wrists.
-- **The "Larp" Factor:** He provides the "Biometric Heatmap"—the dots on the face and the skeletal lines that prove the AI is "watching" the human in real-time.
+
 
 ### Signal Processing Engineer — Ram
 - **The Mission:** Build the Inference Logic & Filtering. He is the "Brain" that turns Nathan's raw dots into actual "Events."
 - **The Code:** Using NumPy and SciPy to calculate Temporal Variance and Standard Deviation. He filters out the "noise" (like blinking or natural breathing) so the HUD doesn't flicker.
-- **The "Larp" Factor:** He’s the one who can explain the "Math" to the technical judges—talking about "Kalman Filters" and "Euclidean Distance thresholds" to make the project sound scientifically grounded.
 
 ---
 
