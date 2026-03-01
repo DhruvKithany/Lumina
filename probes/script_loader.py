@@ -27,10 +27,13 @@ def load_script(path: str | Path) -> str:
     suffix = path.suffix.lower()
 
     if suffix == ".pdf":
-        return _extract_pdf(path)
+        text = _extract_pdf(path)
     else:
         # Plain text / markdown / any text-readable format
-        return path.read_text(encoding="utf-8", errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")
+
+    print(f"[ScriptLoader] Loaded: {path.name} ({suffix}, {len(text):,} chars)")
+    return text
 
 
 def _extract_pdf(path: Path) -> str:
@@ -53,47 +56,29 @@ def _extract_pdf(path: Path) -> str:
     return "\n\n".join(text_parts)
 
 
-def segment_script(text: str, min_length: int = 20) -> List[str]:
+def segment_script(text: str, words_per_segment: int = 20) -> List[str]:
     """
-    Split extracted script text into logical segments (talking points).
+    Split script text into segments of ~20 words each.
 
-    Segments are split by:
-    1. Double newlines (paragraph breaks)
-    2. Numbered list items (e.g., "1.", "2.")
-    3. Bullet points
-
-    Segments shorter than min_length are merged with the next segment.
+    Each segment becomes a talking-point checkpoint for the script tracker.
     """
     if not text.strip():
         return []
 
-    # Split on double newlines or numbered/bulleted list items
-    raw_segments = re.split(r"\n\s*\n|\n(?=\d+[.)]\s)|\n(?=[-•]\s)", text)
+    words = text.split()
+    if not words:
+        return []
 
-    # Clean up whitespace
+    # Chunk into groups of N words
     segments = []
-    for seg in raw_segments:
-        cleaned = " ".join(seg.split())  # collapse internal whitespace
-        if cleaned:
-            segments.append(cleaned)
+    for i in range(0, len(words), words_per_segment):
+        chunk = " ".join(words[i : i + words_per_segment])
+        segments.append(chunk)
 
-    # Merge short segments with the next one
-    merged: list[str] = []
-    buffer = ""
-    for seg in segments:
-        if buffer:
-            buffer = buffer + " " + seg
-        else:
-            buffer = seg
+    # Debug: print all segments
+    print(f"[ScriptLoader] Segmented into {len(segments)} chunks ({words_per_segment} words each, {len(words)} total words):")
+    for i, seg in enumerate(segments):
+        preview = seg[:100]
+        print(f"  [{i+1}/{len(segments)}] \"{preview}{'...' if len(seg) > 100 else ''}\"")
 
-        if len(buffer) >= min_length:
-            merged.append(buffer)
-            buffer = ""
-
-    if buffer:
-        if merged:
-            merged[-1] = merged[-1] + " " + buffer
-        else:
-            merged.append(buffer)
-
-    return merged
+    return segments

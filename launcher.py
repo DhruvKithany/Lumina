@@ -33,6 +33,7 @@ from probes.injector import ProbeInjector
 from probes.qa_listener import QAListener
 from probes.script_loader import load_script, segment_script
 from probes.script_tracker import ScriptTracker
+from hud.mic_test import MicTestDialog
 
 
 _project_root = Path(__file__).resolve().parent
@@ -254,6 +255,22 @@ class LauncherWindow(QMainWindow):
         )
         self._populate_mic_list()
         mic_layout.addWidget(self.mic_combo, stretch=1)
+
+        self.mic_test_btn = QPushButton("🔊 TEST")
+        self.mic_test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.mic_test_btn.setFixedWidth(70)
+        self.mic_test_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #1e293b; color: #38bdf8; border: 1px solid #38bdf8;
+                border-radius: 4px; padding: 4px; font-family: Consolas;
+                font-size: 10px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: rgba(56, 189, 248, 0.15); }
+            """
+        )
+        self.mic_test_btn.clicked.connect(self._open_mic_test)
+        mic_layout.addWidget(self.mic_test_btn)
         layout.addLayout(mic_layout)
 
         # Terminal Log
@@ -425,6 +442,12 @@ class LauncherWindow(QMainWindow):
             pa.terminate()
         except Exception as e:
             self.mic_combo.addItem(f"(PyAudio unavailable: {e})", None)
+
+    def _open_mic_test(self):
+        """Open the Zoom-style mic test dialog."""
+        device_idx = self.mic_combo.currentData()
+        dialog = MicTestDialog(self, device_index=device_idx)
+        dialog.exec()
 
     def _upload_script(self):
         """Open file dialog to upload a script (PDF/TXT) for tracking."""

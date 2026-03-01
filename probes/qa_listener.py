@@ -6,7 +6,7 @@ Modes:
 - **Script tracking**: when `recording_active=True` and a script is loaded,
   feeds transcribed speech to the ScriptTracker for deviation detection.
 - **Q&A / Interview**: when in Q&A or Interview presentation mode,
-  sends the heard question to a free AI model (g4f) to generate a
+  sends the heard question to Groq (Llama) to generate a
   suggested response that appears on the HUD.
 """
 
@@ -22,9 +22,13 @@ except ImportError:
     sr = None
 
 try:
-    import g4f
-except ImportError:
-    g4f = None
+    from groq import Groq
+    from dotenv import load_dotenv
+    import os
+    load_dotenv()
+    _groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+except (ImportError, Exception):
+    _groq_client = None
 
 if TYPE_CHECKING:
     from core.state import TelemetryState
@@ -59,7 +63,7 @@ class QAListener:
             return
 
         recognizer = sr.Recognizer()
-        recognizer.energy_threshold = 300
+        recognizer.energy_threshold = 150
         recognizer.dynamic_energy_threshold = True
         recognizer.pause_threshold = 1.5
 
@@ -83,6 +87,9 @@ class QAListener:
 
         print("[QAListener] Speech listener started")
 
+        was_recording = False
+        calibrated = False
+
         while not self._stop.is_set():
             snap = self.state.snapshot()
             mode = snap.get("presentation_mode", "pitch")
@@ -95,16 +102,49 @@ class QAListener:
 
             # Only listen when there's a reason to
             if not script_mode and not qa_mode:
+                if was_recording and not script_mode:
+                    print("[QAListener] ⏹ Recording stopped")
+                    was_recording = False
+                    calibrated = False
                 self._stop.wait(timeout=1.0)
                 continue
 
+            if script_mode and not was_recording:
+                print()
+                print("=" * 56)
+                print("  [QAListener] 🔴 RECORDING STARTED — Script tracking active")
+                print(f"  [QAListener] Script: {self._script_tracker._cursor}/{len(self._script_tracker.segments)} segments covered")
+                print(f"  [QAListener] Expecting: \"{self._script_tracker.current_segment[:80]}...\"" if self._script_tracker.current_segment else "")
+                print("=" * 56)
+                was_recording = True
+
+            # Calibrate ambient noise ONCE per session, not every loop
+            if not calibrated:
+                try:
+                    with mic as source:
+                        recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                    calibrated = True
+                    print(f"[QAListener] Ambient noise calibrated (threshold={recognizer.energy_threshold:.0f})")
+                except Exception as e:
+                    print(f"[QAListener] Calibration error: {e}")
+                    self._stop.wait(timeout=2.0)
+                    continue
+
+            # Auto-hide old probes (non-blocking, replaces the old sleep(4.0))
+            if hasattr(self, '_last_probe_time') and self._last_probe_time:
+                if time.time() - self._last_probe_time > 4.0:
+                    current = self.state.snapshot()
+                    if current.get("probe_text") == self._last_probe_text:
+                        self.state.update(probe_visible=False)
+                    self._last_probe_time = None
+
             try:
                 with mic as source:
-                    recognizer.adjust_for_ambient_noise(source, duration=0.3)
                     audio = recognizer.listen(
-                        source, timeout=5, phrase_time_limit=10
+                        source, timeout=5, phrase_time_limit=6
                     )
             except sr.WaitTimeoutError:
+                print("[QAListener] ... (waiting for speech)")
                 continue
             except Exception as e:
                 print(f"[QAListener] Audio error: {e}")
@@ -115,6 +155,7 @@ class QAListener:
             try:
                 text = recognizer.recognize_google(audio)
             except sr.UnknownValueError:
+                print("[QAListener] ... (speech not recognized, listening)")
                 continue
             except sr.RequestError as e:
                 print(f"[QAListener] Google STT error: {e}")
@@ -123,7 +164,7 @@ class QAListener:
             if not text:
                 continue
 
-            print(f"[QAListener] Heard: {text!r}")
+            print(f"[QAListener] 🎙️  Captured: \"{text}\"")
 
             # Route to the appropriate handler
             if script_mode:
@@ -136,23 +177,40 @@ class QAListener:
         if self._script_tracker is None:
             return
 
+        # Check if mic could barely hear (very few words captured)
+        word_count = len(spoken_text.split())
+        volume_warning = ""
+        if word_count <= 3:
+            volume_warning = "🔈 Speak louder — mic is barely picking you up.\n"
+            print(f"[QAListener] ⚠ LOW VOLUME — only {word_count} word(s) captured: \"{spoken_text}\"")
+
         on_track, message = self._script_tracker.advance(spoken_text)
         progress = self._script_tracker.progress
+        pct = int(progress * 100)
+
+        # Prepend volume warning on top of any coaching tip
+        display_message = volume_warning + message
+
+        if on_track:
+            print(f"[QAListener] ✓ ON TRACK  ({pct}%) — {message}")
+            if self._script_tracker.current_segment:
+                print(f"[QAListener]   Next segment: \"{self._script_tracker.current_segment[:80]}...\"")
+        else:
+            print(f"[QAListener] ✗ DEVIATION ({pct}%) — {message}")
+            print(f"[QAListener]   Expected: \"{self._script_tracker.current_segment[:80]}...\"" if self._script_tracker.current_segment else "")
+            print(f"[QAListener]   Got:      \"{spoken_text}\"")
 
         # Update state with progress and show the message
         self.state.update(
             script_progress=progress,
-            probe_text=message,
+            probe_text=display_message,
             probe_visible=True,
         )
 
-        # Auto-hide after 4 seconds if on track (don't clutter HUD)
+        # Schedule non-blocking auto-hide (checked at top of listen loop)
         if on_track and not self._script_tracker.is_complete:
-            time.sleep(4.0)
-            # Only hide if no newer probe was pushed
-            current = self.state.snapshot()
-            if current.get("probe_text") == message:
-                self.state.update(probe_visible=False)
+            self._last_probe_time = time.time()
+            self._last_probe_text = display_message
 
     def _handle_qa(self, text: str, mode: str) -> None:
         """Generate AI answer for Q&A / interview mode."""
@@ -174,8 +232,8 @@ class QAListener:
         )
 
     def _get_ai_answer(self, question: str, mode: str) -> str:
-        """Use g4f to generate a response to the heard question."""
-        if g4f is None:
+        """Use Groq (Llama) to generate a response to the heard question."""
+        if _groq_client is None:
             return f'Q: "{question}" — Try mentioning your core differentiators.'
 
         context = "pitch presentation Q&A" if mode == "q&a" else "job interview"
@@ -187,14 +245,19 @@ class QAListener:
         )
 
         try:
-            response = g4f.ChatCompletion.create(
-                model="gpt-4o-mini",
+            print(f"[QAListener] Sending to Groq Llama: {question[:60]}...")
+            response = _groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
                 messages=[{"role": "user", "content": prompt}],
+                max_tokens=150,
+                temperature=0.7,
             )
-            if response:
-                return f'Q: "{question}" — {str(response).strip()}'
+            answer = response.choices[0].message.content.strip()
+            print(f"[QAListener] Groq response: {answer[:80]}...")
+            if answer:
+                return f'Q: "{question}" — {answer}'
         except Exception as e:
-            print(f"[QAListener] AI error: {e}")
+            print(f"[QAListener] Groq AI error: {e}")
 
         return f'Q: "{question}" — Pivot to your value proposition and data.'
 

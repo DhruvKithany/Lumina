@@ -16,3 +16,7 @@ pyaudio>=0.2.14
 # Script upload + speech tracking
 pdfplumber>=0.9.0
 SpeechRecognition>=3.10.0
+
+# AI coaching (Groq + Llama)
+groq>=0.4.0
+python-dotenv>=1.0.0
