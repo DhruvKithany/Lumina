@@ -1,8 +1,5 @@
 """
-Lumina-Presenter: Mission Control Launcher
-
-A beautifully styled graphic user interface to launch the Lumina HUD
-and backend services without needing to type terminal commands.
+HUD Launcher
 """
 
 import sys
