@@ -14,7 +14,7 @@
 
 ## What is Lumina?
 
-lumina is an **affective computing layer** that turns a standard laptop webcam into a real-time presenter coaching system. It monitors body language, eye contact, and speech patterns — then surfaces live feedback through a transparent Heads-Up Display (HUD) overlaid on your screen.
+Lumina is an **affective computing layer** that turns a standard laptop webcam into a real-time presenter coaching system. It monitors body language, eye contact, and speech patterns — then surfaces live feedback through a transparent Heads-Up Display (HUD) overlaid on your screen.
 
 No wearables. No external sensors. Just your camera and a desire to present better.
 
