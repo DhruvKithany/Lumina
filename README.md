@@ -199,7 +199,7 @@ Lumina/
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for code conventions, architecture guidelines, and how to add new metrics.
-
+ 
 ---
 
 ## Team
@@ -213,5 +213,5 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for code conventions, architecture guid
 ---
 
 <p align="center">
-  <sub>Built with ☕ and computer vision · Lumina-Presenter</sub>
+  <sub>Lumina-Presenter</sub>
 </p>
