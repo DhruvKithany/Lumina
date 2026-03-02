@@ -1,4 +1,4 @@
-# Lumina-Presenter
+# Lumina
 # Python 3.10+ recommended
 
 # Core
