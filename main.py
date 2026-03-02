@@ -1,7 +1,7 @@
 """
-Lumina-Presenter: Affective computing layer for presenter coaching.
+Lumina: Affective computing layer for presenter coaching.
 
-Entry point: runs the CV pipeline in a background thread and the PyQt6 HUD
+runs the CV pipeline in a background thread and the PyQt6 HUD
 on the main thread. Optionally enables knowledge-probe injection on cognitive stall.
 
 Usage:
