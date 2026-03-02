@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">✦ Lumina-Presenter</h1>
+  <h1 align="center">✦ Lumina</h1>
   <p align="center">
     <strong>Real-time presenter coaching, powered by nothing but your laptop webcam.</strong>
   </p>
@@ -14,7 +14,7 @@
 
 ## What is Lumina?
 
-Lumina-Presenter is an **affective computing layer** that turns a standard laptop webcam into a real-time presenter coaching system. It monitors body language, eye contact, and speech patterns — then surfaces live feedback through a transparent Heads-Up Display (HUD) overlaid on your screen.
+lumina is an **affective computing layer** that turns a standard laptop webcam into a real-time presenter coaching system. It monitors body language, eye contact, and speech patterns — then surfaces live feedback through a transparent Heads-Up Display (HUD) overlaid on your screen.
 
 No wearables. No external sensors. Just your camera and a desire to present better.
 
@@ -213,5 +213,5 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for code conventions, architecture guid
 ---
 
 <p align="center">
-  <sub>Lumina-Presenter</sub>
+  <sub>Lumina/sub>
 </p>
