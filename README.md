@@ -199,8 +199,3 @@ Lumina/
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for code conventions, architecture guidelines, and how to add new metrics.
- 
-
-<p align="center">
-  <sub>Lumina/sub>
-</p>
