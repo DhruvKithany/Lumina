@@ -200,17 +200,6 @@ Lumina/
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for code conventions, architecture guidelines, and how to add new metrics.
  
----
-
-## Team
-
-| Role | Member |
-|---|---|
-| **HUD Architects (Frontend)** | Dhruv & Chaaki |
-| **Computer Vision Engineer** | Nathan |
-| **Signal Processing Engineer** | Ram |
-
----
 
 <p align="center">
   <sub>Lumina/sub>
